@@ -424,3 +424,7 @@
 *.cache
 build/msw/_mswudll/base/wxbase311u__gepro.dll.intermediate.manifest
 build/msw/_mswudll/base/version.res
+*.unsuccessfulbuild
+*.res
+*.manifest
+*.exp
