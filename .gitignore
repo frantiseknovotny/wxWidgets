@@ -413,3 +413,14 @@
 
 # /utils/wxrc/
 /utils/wxrc/*.sln
+*.obj
+*.tlog
+*.dll
+*.lib
+*.pch
+*.log
+*.pdb
+*.lastbuildstate
+*.cache
+build/msw/_mswudll/base/wxbase311u__gepro.dll.intermediate.manifest
+build/msw/_mswudll/base/version.res
