@@ -18,9 +18,8 @@
     #include "wx/log.h"
 #endif // WX_PRECOMP
 
-#include <gtk/gtk.h>
+#include "wx/gtk/private/wrapgtk.h"
 #include "wx/gtk/private/object.h"
-#include "wx/gtk/private/gtk2-compat.h"
 
 GdkWindow* wxGetTopLevelGDK();
 
@@ -109,9 +108,9 @@ wxCursor::wxCursor(const char bits[], int width, int height,
 #ifdef __WXGTK3__
     wxBitmap bitmap(bits, width, height);
     if (maskBits)
-        bitmap.SetMask(new wxMask(wxBitmap(maskBits, width, height)));
+        bitmap.SetMask(new wxMask(wxBitmap(maskBits, width, height), *wxWHITE));
     GdkPixbuf* pixbuf = bitmap.GetPixbuf();
-    if (fg || bg)
+    if ((fg && *fg != *wxBLACK) || (bg && *bg != *wxWHITE))
     {
         const int stride = gdk_pixbuf_get_rowstride(pixbuf);
         const int n_channels = gdk_pixbuf_get_n_channels(pixbuf);
@@ -121,7 +120,7 @@ wxCursor::wxCursor(const char bits[], int width, int height,
             guchar* p = data;
             for (int i = 0; i < width; i++, p += n_channels)
             {
-                if (p[0])
+                if (p[0] == 0)
                 {
                     if (fg)
                     {
@@ -175,19 +174,19 @@ wxPoint wxCursor::GetHotSpot() const
 #if GTK_CHECK_VERSION(2,8,0)
     if (GetCursor())
     {
-        if (gtk_check_version(2,8,0) == NULL)
+        if (wx_is_at_least_gtk2(8))
         {
             GdkPixbuf *pixbuf = gdk_cursor_get_image(GetCursor());
             if (pixbuf)
             {
-		wxPoint hotSpot = wxDefaultPosition;
+                wxPoint hotSpot = wxDefaultPosition;
                 const gchar* opt_xhot = gdk_pixbuf_get_option(pixbuf, "x_hot");
                 const gchar* opt_yhot = gdk_pixbuf_get_option(pixbuf, "y_hot");
                 if (opt_xhot && opt_yhot)
                 {
-		    const int xhot = atoi(opt_xhot);
-		    const int yhot = atoi(opt_yhot);
-		    hotSpot = wxPoint(xhot, yhot);
+                    const int xhot = atoi(opt_xhot);
+                    const int yhot = atoi(opt_yhot);
+                    hotSpot = wxPoint(xhot, yhot);
                 }
                 g_object_unref(pixbuf);
                 return hotSpot;
@@ -415,6 +414,9 @@ bool wxIsBusy()
 
 void wxSetCursor( const wxCursor& cursor )
 {
-    g_globalCursor = cursor;
-    SetGlobalCursor(cursor);
+    if (cursor.IsOk() || g_globalCursor.IsOk())
+    {
+        g_globalCursor = cursor;
+        SetGlobalCursor(cursor);
+    }
 }

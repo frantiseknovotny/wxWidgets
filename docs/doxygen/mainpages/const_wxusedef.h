@@ -45,6 +45,9 @@ library:
     other locales and reduces the library size; useful for embedded systems.}
 @itemdef{wxUSE_GUI, Use the GUI classes; if set to 0 only non-GUI classes are
     available.}
+@itemdef{wxUSE_UNSAFE_WXSTRING_CONV, Defined as 1 by default for compatibility,
+    but can be set to 0 to globally disable unsafe implicit conversions in
+    wxString class. See @ref overview_string_settings for more details.}
 @endDefList
 
 
@@ -148,6 +151,7 @@ library:
 @itemdef{wxUSE_IPV6, Use experimental wxIPV6address and related classes.}
 @itemdef{wxUSE_JOYSTICK, Use wxJoystick class.}
 @itemdef{wxUSE_LIBJPEG, Enables JPEG format support (requires libjpeg).}
+@itemdef{wxUSE_LIBLZMA, Enables LZMA compression support (see @ref page_build_liblzma).}
 @itemdef{wxUSE_LIBPNG, Enables PNG format support (requires libpng). Also requires wxUSE_ZLIB.}
 @itemdef{wxUSE_LIBTIFF, Enables TIFF format support (requires libtiff).}
 @itemdef{wxUSE_LISTBOOK, Use wxListbook class.}
@@ -186,6 +190,7 @@ library:
 @itemdef{wxUSE_POSTSCRIPT, Use wxPostScriptPrinter class.}
 @itemdef{wxUSE_PRINTF_POS_PARAMS, Use wxVsnprintf which supports positional parameters.}
 @itemdef{wxUSE_PRINTING_ARCHITECTURE, Enable printer classes.}
+@itemdef{wxUSE_PRIVATE_FONTS, Implement wxFont::AddPrivateFont() method.}
 @itemdef{wxUSE_PROGRESSDLG, Enables progress dialog classes.}
 @itemdef{wxUSE_PROPGRID, Use wxPropertyGrid library.}
 @itemdef{wxUSE_PROTOCOL, Use wxProtocol and derived classes.}
@@ -194,6 +199,7 @@ library:
 @itemdef{wxUSE_PROTOCOL_HTTP, Use wxHTTP class. (requireswxProtocol)}
 @itemdef{wxUSE_RADIOBOX, Use wxRadioBox class.}
 @itemdef{wxUSE_RADIOBTN, Use wxRadioButton class.}
+@itemdef{wxUSE_REPRODUCIBLE_BUILD, Make library builds reproducible.}
 @itemdef{wxUSE_REGEX, Use wxRegEx class.}
 @itemdef{wxUSE_RICHTEXT, Use wxRichTextCtrl class.}
 @itemdef{wxUSE_RICHTEXT_XML_HANDLER, See src/xrc/xh_richtext.cpp file.}
@@ -267,6 +273,7 @@ library:
 @itemdef{wxUSE_LIBSDL, Use SDL for wxSound implementation.}
 @itemdef{wxUSE_PLUGINS, See also wxUSE_LIBSDL.}
 @itemdef{wxUSE_UNIX, Enabled on Unix Platform.}
+@itemdef(wxUSE_XTEST, Use XTest extension.}
 @endDefList
 
 
@@ -305,13 +312,6 @@ library:
 @endDefList
 
 
-@section page_wxusedef_cocoa Cocoa Symbols
-
-@beginDefList
-@itemdef{wxUSE_OBJC_UNIQUIFYING, Enable Objective-C class name uniquifying.}
-@endDefList
-
-
 @section page_wxusedef_msw wxMSW Symbols
 
 @beginDefList
@@ -346,6 +346,7 @@ compilers. See also wxUSE_NO_MANIFEST.}
 @itemdef{wxUSE_VC_CRTDBG, See wx/msw/msvcrt.h file.}
 @itemdef{wxUSE_UXTHEME, Enable support for XP themes.}
 @itemdef{wxUSE_WIN_METAFILES_ALWAYS, Use wxMetaFile even when wxUSE_ENH_METAFILE=1.}
+@itemdef{wxUSE_WINRT, Enable WinRT support.}
 @itemdef{wxUSE_WXDIB, Use wxDIB class.}
 @endDefList
 

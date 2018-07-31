@@ -2,7 +2,7 @@
 #                                                                            *
 # Make file for VMS                                                          *
 # Author : J.Jansen (joukj@hrem.nano.tudelft.nl)                             *
-# Date : 20 August 2013                                                      *
+# Date : 22 May 2018                                                         *
 #                                                                            *
 #*****************************************************************************
 .first
@@ -62,7 +62,7 @@ OBJECTS = appunix.obj,apptraits.obj,\
 		stdpaths.obj,\
 		taskbarx11.obj,\
 		timerunx.obj,evtloopunix.obj,fdiounix.obj,uiactionx11.obj,\
-		mediactrl.obj,wakeuppipe.obj
+		mediactrl.obj,wakeuppipe.obj,mimetype.obj
 
 SOURCES = appunix.cpp,apptraits.cpp,\
 		dialup.cpp,\
@@ -83,7 +83,7 @@ SOURCES = appunix.cpp,apptraits.cpp,\
 		stdpaths.cpp,\
 		taskbarx11.cpp,\
 		timerunx.cpp,evtloopunix.cpp,fdiounix.cpp,uiactionx11.cpp,\
-		mediactrl.cpp,wakeuppipe.cpp
+		mediactrl.cpp,wakeuppipe.cpp,mimetype.cpp
 
 all : $(SOURCES)
 	$(MMS)$(MMSQUALIFIERS) $(OBJECTS)
@@ -126,6 +126,10 @@ sound_sdl.obj : sound_sdl.cpp
 stdpaths.obj : stdpaths.cpp
 taskbarx11.obj : taskbarx11.cpp
 displayx11.obj : displayx11.cpp
+	pipe gsed -e "s/X11\/extensions/X11/" < $(MMS$TARGET_NAME).cpp\
+	> $(MMS$TARGET_NAME).cpp_
+	cxx $(CXXFLAGS)$(CXX_DEFINE) $(MMS$TARGET_NAME).cpp_
+	delete $(MMS$TARGET_NAME).cpp_;*
 timerunx.obj : timerunx.cpp
 evtloopunix.obj : evtloopunix.cpp
 	cxx $(CXXFLAGS)$(CXX_DEFINE)/nowarn evtloopunix.cpp
@@ -133,3 +137,4 @@ fdiounix.obj : fdiounix.cpp
 uiactionx11.obj : uiactionx11.cpp
 mediactrl.obj : mediactrl.cpp
 wakeuppipe.obj : wakeuppipe.cpp
+mimetype.obj : mimetype.cpp

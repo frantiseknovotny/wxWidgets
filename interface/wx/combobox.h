@@ -38,7 +38,8 @@
            allows the user to choose from the list of options but doesn't allow
            to enter a value not present in the list.
     @style{wxCB_SORT}
-           Sorts the entries in the list alphabetically.
+           Sorts the entries in the list alphabetically. Notice that this style
+           is not currently implemented in wxOSX.
     @style{wxTE_PROCESS_ENTER}
            The control will generate the event @c wxEVT_TEXT_ENTER
            (otherwise pressing Enter key is either processed internally by the
@@ -66,8 +67,7 @@
            Process a @c wxEVT_COMBOBOX_CLOSEUP event, which is generated
            when the list box of the combo box disappears (closes up). This
            event is only generated for the same platforms as
-           @c wxEVT_COMBOBOX_DROPDOWN above. Also note that only wxMSW and
-           wxOSX/Cocoa support adding or deleting items in this event.
+           @c wxEVT_COMBOBOX_DROPDOWN above.
     @endEventTable
 
     @library{wxcore}
@@ -253,12 +253,15 @@ public:
     /**
         Sets the text for the combobox text field.
 
-        Notice that this method will generate a @c wxEVT_TEXT
-        event, use wxTextEntry::ChangeValue() if this is undesirable.
+        For normal, editable comboboxes with a text entry field calling this
+        method will generate a @c wxEVT_TEXT event, consistently with
+        wxTextEntry::SetValue() behaviour, use wxTextEntry::ChangeValue() if
+        this is undesirable.
 
-        @note For a combobox with @c wxCB_READONLY style the string must be in
-              the combobox choices list, otherwise the call to SetValue() is
-              ignored. This is case insensitive.
+        For controls with @c wxCB_READONLY style the method behaves somewhat
+        differently: the string must be in the combobox choices list (the check
+        for this is case-insensitive) and @c wxEVT_TEXT is @e not generated in
+        this case.
 
         @param text
             The text to set.

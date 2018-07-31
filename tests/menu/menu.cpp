@@ -21,6 +21,7 @@
 #endif // WX_PRECOMP
 
 #include "wx/menu.h"
+#include "wx/translation.h"
 #include "wx/uiaction.h"
 
 #include <stdarg.h>
@@ -76,8 +77,8 @@ class MenuTestCase : public CppUnit::TestCase
 public:
     MenuTestCase() {}
 
-    virtual void setUp() { CreateFrame(); }
-    virtual void tearDown() { m_frame->Destroy(); }
+    virtual void setUp() wxOVERRIDE { CreateFrame(); }
+    virtual void tearDown() wxOVERRIDE { m_frame->Destroy(); }
 
 private:
     CPPUNIT_TEST_SUITE( MenuTestCase );
@@ -86,6 +87,9 @@ private:
         CPPUNIT_TEST( EnableTop );
         CPPUNIT_TEST( Count );
         CPPUNIT_TEST( Labels );
+#if wxUSE_INTL
+        CPPUNIT_TEST( TranslatedMnemonics );
+#endif // wxUSE_INTL
         CPPUNIT_TEST( RadioItems );
         CPPUNIT_TEST( RemoveAdd );
         CPPUNIT_TEST( ChangeBitmap );
@@ -99,6 +103,9 @@ private:
     void EnableTop();
     void Count();
     void Labels();
+#if wxUSE_INTL
+    void TranslatedMnemonics();
+#endif // wxUSE_INTL
     void RadioItems();
     void RemoveAdd();
     void ChangeBitmap();
@@ -247,7 +254,7 @@ void MenuTestCase::FindInMenu()
 
     // Find by id:
     CPPUNIT_ASSERT( menuHelp->FindItem(MenuTestCase_Bar) );
-    CPPUNIT_ASSERT( menuHelp->FindItem(MenuTestCase_Foo) == NULL );
+    CPPUNIT_ASSERT( !menuHelp->FindItem(MenuTestCase_Foo) );
 
     for (n=0; n < menuHelp->GetMenuItemCount(); ++n)
     {
@@ -333,6 +340,58 @@ void MenuTestCase::Labels()
     CPPUNIT_ASSERT_EQUAL( "Foo", itemFoo->GetItemLabelText() );
     CPPUNIT_ASSERT_EQUAL( "Foo", wxMenuItem::GetLabelText("&Foo\tCtrl-F") );
 }
+
+#if wxUSE_INTL
+
+static wxString
+GetTranslatedString(const wxTranslations& trans, const wxString& s)
+{
+    const wxString* t = trans.GetTranslatedString(s);
+    return t ? *t : s;
+}
+
+void MenuTestCase::TranslatedMnemonics()
+{
+    // Check that appended mnemonics are correctly stripped;
+    // see https://trac.wxwidgets.org/ticket/16736
+    wxTranslations trans;
+    trans.SetLanguage(wxLANGUAGE_JAPANESE);
+    wxFileTranslationsLoader::AddCatalogLookupPathPrefix("./intl");
+    CPPUNIT_ASSERT( trans.AddCatalog("internat") );
+
+    // Check the translation is being used:
+    CPPUNIT_ASSERT( wxString("&File") != GetTranslatedString(trans, "&File") );
+
+    wxString filemenu = m_frame->GetMenuBar()->GetMenuLabel(0);
+    CPPUNIT_ASSERT_EQUAL
+    (
+         wxStripMenuCodes(GetTranslatedString(trans, "&File")),
+         wxStripMenuCodes(GetTranslatedString(trans, filemenu))
+    );
+
+    // Test strings that have shortcuts. Duplicate non-mnemonic translations
+    // exist for both "Edit" and "View", for ease of comparison
+    CPPUNIT_ASSERT_EQUAL
+    (
+         GetTranslatedString(trans, "Edit"),
+         wxStripMenuCodes(GetTranslatedString(trans, "E&dit\tCtrl+E"))
+    );
+
+    // "Vie&w" also has a space before the (&W)
+    CPPUNIT_ASSERT_EQUAL
+    (
+         GetTranslatedString(trans, "View"),
+         wxStripMenuCodes(GetTranslatedString(trans, "Vie&w\tCtrl+V"))
+    );
+
+    // Test a 'normal' mnemonic too: the translation is "Preten&d"
+    CPPUNIT_ASSERT_EQUAL
+    (
+         "Pretend",
+         wxStripMenuCodes(GetTranslatedString(trans, "B&ogus"))
+    );
+}
+#endif // wxUSE_INTL
 
 void MenuTestCase::RadioItems()
 {
@@ -429,6 +488,55 @@ void MenuTestCase::ChangeBitmap()
     wxDELETE(menu);
 }
 
+#if wxUSE_UIACTIONSIMULATOR
+
+// In C++98 this class can't be defined inside Events() method, unfortunately,
+// as its OnMenu() method wouldn't be usable with template Bind() then.
+class MenuEventHandler : public wxEvtHandler
+{
+public:
+    MenuEventHandler(wxWindow* win)
+        : m_win(win)
+    {
+        m_win->Bind(wxEVT_MENU, &MenuEventHandler::OnMenu, this);
+
+        m_gotEvent = false;
+        m_event = NULL;
+    }
+
+    virtual ~MenuEventHandler()
+    {
+        m_win->Unbind(wxEVT_MENU, &MenuEventHandler::OnMenu, this);
+
+        delete m_event;
+    }
+
+    const wxCommandEvent& GetEvent()
+    {
+        CPPUNIT_ASSERT( m_gotEvent );
+
+        m_gotEvent = false;
+
+        return *m_event;
+    }
+
+private:
+    void OnMenu(wxCommandEvent& event)
+    {
+        CPPUNIT_ASSERT( !m_gotEvent );
+
+        delete m_event;
+        m_event = static_cast<wxCommandEvent*>(event.Clone());
+        m_gotEvent = true;
+    }
+
+    wxWindow* const m_win;
+    wxCommandEvent* m_event;
+    bool m_gotEvent;
+};
+
+#endif // wxUSE_UIACTIONSIMULATOR
+
 void MenuTestCase::Events()
 {
 #ifdef __WXGTK__
@@ -443,61 +551,18 @@ void MenuTestCase::Events()
 #endif // __WXGTK__
 
 #if wxUSE_UIACTIONSIMULATOR
-    class MenuEventHandler : public wxEvtHandler
-    {
-    public:
-        MenuEventHandler(wxWindow* win)
-            : m_win(win)
-        {
-            m_win->Connect(wxEVT_MENU,
-                           wxCommandEventHandler(MenuEventHandler::OnMenu),
-                           NULL,
-                           this);
-
-            m_gotEvent = false;
-            m_event = NULL;
-        }
-
-        virtual ~MenuEventHandler()
-        {
-            m_win->Disconnect(wxEVT_MENU,
-                              wxCommandEventHandler(MenuEventHandler::OnMenu),
-                              NULL,
-                              this);
-
-            delete m_event;
-        }
-
-        const wxCommandEvent& GetEvent()
-        {
-            CPPUNIT_ASSERT( m_gotEvent );
-
-            m_gotEvent = false;
-
-            return *m_event;
-        }
-
-    private:
-        void OnMenu(wxCommandEvent& event)
-        {
-            CPPUNIT_ASSERT( !m_gotEvent );
-
-            delete m_event;
-            m_event = static_cast<wxCommandEvent*>(event.Clone());
-            m_gotEvent = true;
-        }
-
-        wxWindow* const m_win;
-        wxCommandEvent* m_event;
-        bool m_gotEvent;
-    };
-
     MenuEventHandler handler(m_frame);
 
     // Invoke the accelerator.
     m_frame->Show();
     m_frame->SetFocus();
     wxYield();
+
+#ifdef __WXGTK__
+    // This is another test which fails with wxGTK without this delay because
+    // the frame doesn't appear on screen in time.
+    wxMilliSleep(50);
+#endif // __WXGTK__
 
     wxUIActionSimulator sim;
     sim.KeyDown(WXK_F1);

@@ -18,6 +18,8 @@
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QWidget>
 #include <QtWidgets/QScrollArea>
+#include <QtWidgets/QMenu>
+#include <QtWidgets/QShortcut>
 
 #ifndef WX_PRECOMP
     #include "wx/dcclient.h"
@@ -36,6 +38,8 @@
 
 #define VERT_SCROLLBAR_POSITION 0, 1
 #define HORZ_SCROLLBAR_POSITION 1, 0
+
+#define TRACE_QT_WINDOW "qtwindow"
 
 // Base Widget helper (no scrollbar, used by wxWindow)
 
@@ -148,6 +152,7 @@ void wxWindowQt::Init()
 #if wxUSE_ACCEL
     m_qtShortcutHandler = new wxQtShortcutHandler( this );
     m_processingShortcut = false;
+    m_qtShortcuts = NULL;
 #endif
     m_qtWindow = NULL;
     m_qtContainer = NULL;
@@ -183,12 +188,13 @@ wxWindowQt::~wxWindowQt()
 
 #if wxUSE_ACCEL
     m_qtShortcutHandler->deleteLater();
+    delete m_qtShortcuts;
 #endif
 
     // Delete only if the qt widget was created or assigned to this base class
     if (m_qtWindow)
     {
-        wxLogDebug(wxT("wxWindow::~wxWindow %s m_qtWindow=%p"),
+        wxLogTrace(TRACE_QT_WINDOW, wxT("wxWindow::~wxWindow %s m_qtWindow=%p"),
                    (const char*)GetName(), m_qtWindow);
         // Avoid sending further signals (i.e. if deleting the current page)
         m_qtWindow->blockSignals(true);
@@ -200,7 +206,7 @@ wxWindowQt::~wxWindowQt()
     }
     else
     {
-        wxLogDebug(wxT("wxWindow::~wxWindow %s m_qtWindow is NULL"),
+        wxLogTrace(TRACE_QT_WINDOW, wxT("wxWindow::~wxWindow %s m_qtWindow is NULL"),
                    (const char*)GetName());
     }
 }
@@ -226,20 +232,18 @@ bool wxWindowQt::Create( wxWindowQt * parent, wxWindowID id, const wxPoint & pos
                 QtSetScrollBar( wxVERTICAL );
         }
         else
-        {
             m_qtWindow = new wxQtWidget( parent, this );
-        }
-
-        GetHandle()->setMouseTracking(true);
     }
 
+    
+    GetHandle()->setMouseTracking(true);
     if ( !wxWindowBase::CreateBase( parent, id, pos, size, style, wxDefaultValidator, name ))
         return false;
 
     parent->AddChild( this );
 
     wxPoint p;
-    if(pos != wxDefaultPosition)
+    if ( pos != wxDefaultPosition )
         p = pos;
 
     DoMoveWindow( p.x, p.y, size.GetWidth(), size.GetHeight() );
@@ -256,7 +260,7 @@ void wxWindowQt::PostCreation(bool generic)
         // store pointer to the QWidget subclass (to be used in the destructor)
         m_qtWindow = GetHandle();
     }
-    wxLogDebug(wxT("wxWindow::Create %s m_qtWindow=%p"),
+    wxLogTrace(TRACE_QT_WINDOW, wxT("wxWindow::Create %s m_qtWindow=%p"),
                (const char*)GetName(), m_qtWindow);
 
     // set the background style after creation (not before like in wxGTK)
@@ -391,7 +395,7 @@ void wxWindowQt::WarpPointer(int x, int y)
 
 void wxWindowQt::Update()
 {
-    wxLogDebug(wxT("wxWindow::Update %s"), (const char*)GetName());
+    wxLogTrace(TRACE_QT_WINDOW, wxT("wxWindow::Update %s"), (const char*)GetName());
     // send the paint event to the inner widget in scroll areas:
     if ( QtGetScrollBarsContainer() )
     {
@@ -417,20 +421,29 @@ void wxWindowQt::Refresh( bool WXUNUSED( eraseBackground ), const wxRect *rect )
     {
         if ( rect != NULL )
         {
-            wxLogDebug(wxT("wxWindow::Refresh %s rect %d %d %d %d"),
+            wxLogTrace(TRACE_QT_WINDOW, wxT("wxWindow::Refresh %s rect %d %d %d %d"),
                        (const char*)GetName(),
                        rect->x, rect->y, rect->width, rect->height);
             widget->update( wxQtConvertRect( *rect ));
         }
         else
         {
-            wxLogDebug(wxT("wxWindow::Refresh %s"),
+            wxLogTrace(TRACE_QT_WINDOW, wxT("wxWindow::Refresh %s"),
                        (const char*)GetName());
             widget->update();
         }
     }
 }
 
+bool wxWindowQt::SetCursor( const wxCursor &cursor )
+{
+    if (!wxWindowBase::SetCursor(cursor))
+        return false;
+
+    GetHandle()->setCursor(cursor.GetHandle());
+    
+    return true;
+}
 
 bool wxWindowQt::SetFont( const wxFont &font )
 {
@@ -496,7 +509,7 @@ wxScrollBar *wxWindowQt::QtGetScrollBar( int orientation ) const
  * passed as parameter */
 wxScrollBar *wxWindowQt::QtSetScrollBar( int orientation, wxScrollBar *scrollBar )
 {
-    QAbstractScrollArea *scrollArea = QtGetScrollBarsContainer();
+    QScrollArea *scrollArea = QtGetScrollBarsContainer();
     wxCHECK_MSG( scrollArea, NULL, "Window without scrolling area" );
 
     // Create a new scrollbar if needed
@@ -520,12 +533,12 @@ wxScrollBar *wxWindowQt::QtSetScrollBar( int orientation, wxScrollBar *scrollBar
     // Let Qt handle layout
     if ( orientation == wxHORIZONTAL )
     {
-        scrollArea->setHorizontalScrollBar( scrollBar->GetHandle() );
+        scrollArea->setHorizontalScrollBar( scrollBar->GetQScrollBar() );
         m_horzScrollBar = scrollBar;
     }
     else
     {
-        scrollArea->setVerticalScrollBar( scrollBar->GetHandle() );
+        scrollArea->setVerticalScrollBar( scrollBar->GetQScrollBar() );
         m_vertScrollBar = scrollBar;
     }
     return scrollBar;
@@ -560,9 +573,8 @@ void wxWindowQt::SetScrollbar( int orientation, int pos, int thumbvisible, int r
 void wxWindowQt::SetScrollPos( int orientation, int pos, bool WXUNUSED( refresh ))
 {
     wxScrollBar *scrollBar = QtGetScrollBar( orientation );
-    wxCHECK_RET( scrollBar, "Invalid scrollbar" );
-
-    scrollBar->SetThumbPosition( pos );
+    if ( scrollBar )
+        scrollBar->SetThumbPosition( pos );
 }
 
 int wxWindowQt::GetScrollPos( int orientation ) const
@@ -728,6 +740,9 @@ void wxWindowQt::SetWindowStyleFlag( long style )
 //        qtFrame->setFrameStyle( QFrame::StyledPanel );
 //        qtFrame->setFrameShadow( QFrame::Plain );
 //    }
+
+    if ( !GetHandle() )
+        return;
 
     Qt::WindowFlags qtFlags = GetHandle()->windowFlags();
 
@@ -924,15 +939,16 @@ void wxWindowQt::SetAcceleratorTable( const wxAcceleratorTable& accel )
     wxWindowBase::SetAcceleratorTable( accel );
 
     // Disable previously set accelerators
-    while ( !m_qtShortcuts.isEmpty() )
-        delete m_qtShortcuts.takeFirst();
+    while ( !m_qtShortcuts->isEmpty() )
+        delete m_qtShortcuts->takeFirst();
 
     // Create new shortcuts (use GetHandle() so all events inside
     // the window are handled, not only in the container subwindow)
+    delete m_qtShortcuts;
     m_qtShortcuts = accel.ConvertShortcutTable( GetHandle() );
 
     // Connect shortcuts to window
-    Q_FOREACH( QShortcut *s, m_qtShortcuts )
+    Q_FOREACH( QShortcut *s, *m_qtShortcuts )
     {
         QObject::connect( s, &QShortcut::activated, m_qtShortcutHandler, &wxQtShortcutHandler::activated );
         QObject::connect( s, &QShortcut::activatedAmbiguously, m_qtShortcutHandler, &wxQtShortcutHandler::activated );
@@ -1018,13 +1034,6 @@ bool wxWindowQt::QtHandlePaintEvent ( QWidget *handler, QPaintEvent *event )
         // use the Qt event region:
         m_updateRegion.QtSetRegion( event->region() );
 
-        if (false)
-            wxLogDebug(wxT("wxWindow::QtHandlePaintEvent %s %s region %d %d %d %d"),
-                   (const char*)GetName(),
-                   m_qtPicture->isNull() ? "wxPaintDC" : "wxClientDC",
-                   m_updateRegion.GetBox().x, m_updateRegion.GetBox().y,
-                   m_updateRegion.GetBox().width, m_updateRegion.GetBox().height);
-
         // Prepare the Qt painter for wxWindowDC:
         bool ok = false;
         if ( QtGetScrollBarsContainer() )
@@ -1071,7 +1080,7 @@ bool wxWindowQt::QtHandlePaintEvent ( QWidget *handler, QPaintEvent *event )
                             // Ensure DC is cleared if handler didn't and Qt will not do it
                             if ( UseBgCol() && !GetHandle()->autoFillBackground() )
                             {
-                                wxLogDebug(wxT("wxWindow::QtHandlePaintEvent %s clearing DC to %s"),
+                                wxLogTrace(TRACE_QT_WINDOW, wxT("wxWindow::QtHandlePaintEvent %s clearing DC to %s"),
                                            (const char*)GetName(), GetBackgroundColour().GetAsString()
                                            );
                                 dc.SetBackground(GetBackgroundColour());
@@ -1100,6 +1109,7 @@ bool wxWindowQt::QtHandlePaintEvent ( QWidget *handler, QPaintEvent *event )
 
                 // send the paint event (wxWindowDC will draw directly):
                 wxPaintEvent paint( GetId() );
+                paint.SetEventObject(this);
                 handled = ProcessWindowEvent(paint);
                 m_updateRegion.Clear();
             }
@@ -1120,7 +1130,7 @@ bool wxWindowQt::QtHandlePaintEvent ( QWidget *handler, QPaintEvent *event )
         else
         {
             // Painter didn't begun, not handled by wxWidgets:
-            wxLogDebug(wxT("wxWindow::QtHandlePaintEvent %s Qt widget painter begin failed"),
+            wxLogTrace(TRACE_QT_WINDOW, wxT("wxWindow::QtHandlePaintEvent %s Qt widget painter begin failed"),
                        (const char*)GetName() );
             return false;
         }
@@ -1137,6 +1147,8 @@ bool wxWindowQt::QtHandleResizeEvent ( QWidget *WXUNUSED( handler ), QResizeEven
 bool wxWindowQt::QtHandleWheelEvent ( QWidget *WXUNUSED( handler ), QWheelEvent *event )
 {
     wxMouseEvent e( wxEVT_MOUSEWHEEL );
+    e.SetPosition( wxQtConvertPoint( event->pos() ) );
+
     e.m_wheelAxis = ( event->orientation() == Qt::Vertical ) ? wxMOUSE_WHEEL_VERTICAL : wxMOUSE_WHEEL_HORIZONTAL;
     e.m_wheelRotation = event->delta();
     e.m_linesPerAction = 3;
@@ -1151,7 +1163,7 @@ bool wxWindowQt::QtHandleKeyEvent ( QWidget *WXUNUSED( handler ), QKeyEvent *eve
     // qt sends keyup and keydown events for autorepeat, but this is not
     // normal for wx which only sends repeated keydown events
     // discard repeated keyup events
-    if(event->isAutoRepeat() && event->type() == QEvent::KeyRelease)
+    if ( event->isAutoRepeat() && event->type() == QEvent::KeyRelease )
         return true;
 
 #if wxUSE_ACCEL
@@ -1410,12 +1422,7 @@ bool wxWindowQt::QtHandleCloseEvent ( QWidget *handler, QCloseEvent *WXUNUSED( e
     if ( GetHandle() != handler )
         return false;
 
-    int close = Close();
-    if ( close )
-    {
-        Destroy();
-    }
-    return close;
+    return Close();
 }
 
 bool wxWindowQt::QtHandleContextMenuEvent ( QWidget *WXUNUSED( handler ), QContextMenuEvent *event )
@@ -1467,7 +1474,7 @@ QWidget *wxWindowQt::GetHandle() const
     return m_qtWindow;
 }
 
-QAbstractScrollArea *wxWindowQt::QtGetScrollBarsContainer() const
+QScrollArea *wxWindowQt::QtGetScrollBarsContainer() const
 {
     return m_qtContainer;
 }

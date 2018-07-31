@@ -110,9 +110,9 @@ struct wxFontMetrics
     abstract API for drawing on any of them.
 
     wxWidgets offers an alternative drawing API based on the modern drawing
-    backends GDI+, CoreGraphics and Cairo. See wxGraphicsContext, wxGraphicsRenderer
-    and related classes. There is also a wxGCDC linking the APIs by offering
-    the wxDC API on top of a wxGraphicsContext.
+    backends GDI+, CoreGraphics, Cairo and Direct2D. See wxGraphicsContext,
+    wxGraphicsRenderer and related classes. There is also a wxGCDC linking
+    the APIs by offering the wxDC API on top of a wxGraphicsContext.
 
     wxDC is an abstract base class and cannot be created directly.
     Use wxPaintDC, wxClientDC, wxWindowDC, wxScreenDC, wxMemoryDC or
@@ -155,21 +155,25 @@ struct wxFontMetrics
     In general wxDC methods don't support alpha transparency and the alpha
     component of wxColour is simply ignored and you need to use wxGraphicsContext
     for full transparency support. There are, however, a few exceptions: first,
-    under Mac OS X colours with alpha channel are supported in all the normal
+    under OS X and GTK+ 3 colours with alpha channel are supported in all the normal
     wxDC-derived classes as they use wxGraphicsContext internally. Second,
     under all platforms wxSVGFileDC also fully supports alpha channel. In both
     of these cases the instances of wxPen or wxBrush that are built from
     wxColour use the colour's alpha values when stroking or filling.
 
 
-    @section Support for Transformation Matrix
+    @section dc_transform_support Support for Transformation Matrix
 
-    On some platforms (currently only under MSW) wxDC has support for applying 
-    an arbitrary affine transformation matrix to its coordinate system. Call
-    CanUseTransformMatrix() to check if this support is available and then call
-    SetTransformMatrix() if it is. If the transformation matrix is not
-    supported, SetTransformMatrix() always simply returns false and doesn't do
-    anything.
+    On some platforms (currently under MSW, GTK+ 3, OS X) wxDC has support for
+    applying an arbitrary affine transformation matrix to its coordinate system
+    (since 3.1.1 this feature is also supported by wxGCDC in all ports).
+    Call CanUseTransformMatrix() to check if this support is available and then
+    call SetTransformMatrix() if it is. If the transformation matrix is not
+    supported, SetTransformMatrix() always simply returns @c false and doesn't
+    do anything.
+
+    This feature is only available when @c wxUSE_DC_TRANSFORM_MATRIX build
+    option is enabled.
 
 
     @library{wxcore}
@@ -523,8 +527,14 @@ public:
                          wxPolygonFillMode fill_style = wxODDEVEN_RULE);
 
     /**
-        Draws a rectangle with the given top left corner, and with the given
-        size.  The current pen is used for the outline and the current brush
+        Draws a rectangle with the given corner coordinate and size.
+
+        Normally, @a x and @a y specify the top left corner coordinates and
+        both @a width and @a height are positive, however they are also allowed
+        to be negative, in which case the corresponding corner coordinate
+        refers to the right or bottom corner instead.
+
+        The current pen is used for the outline and the current brush
         for filling the shape.
     */
     void DrawRectangle(wxCoord x, wxCoord y, wxCoord width, wxCoord height);
@@ -749,8 +759,35 @@ public:
 
     /**
         Gets the rectangle surrounding the current clipping region.
+        If no clipping region is set this function returns the extent
+        of the device context.
+
+        @remarks
+        Clipping region is given in logical coordinates.
+
+        @param x If non-@NULL, filled in with the logical horizontal coordinate
+            of the top left corner of the clipping region if the function
+            returns true or 0 otherwise.
+        @param y If non-@NULL, filled in with the logical vertical coordinate
+            of the top left corner of the clipping region if the function
+            returns true or 0 otherwise.
+        @param width If non-@NULL, filled in with the width of the clipping
+            region if the function returns true or the device context width
+            otherwise.
+        @param height If non-@NULL, filled in with the height of the clipping
+            region if the function returns true or the device context height
+            otherwise.
+        @return @true if there is a clipping region or @false if there is no
+            active clipping region (note that this return value is available
+            only since wxWidgets 3.1.2, this function didn't return anything in
+            the previous versions).
     */
-    void GetClippingBox(wxCoord *x, wxCoord *y, wxCoord *width, wxCoord *height) const;
+    bool GetClippingBox(wxCoord *x, wxCoord *y, wxCoord *width, wxCoord *height) const;
+
+    /**
+        @overload
+    */
+    bool GetClippingBox(wxRect& rect) const;
 
     /**
         Sets the clipping region for this device context to the intersection of
@@ -761,13 +798,17 @@ public:
         uses for the clipping region are for clipping text or for speeding up
         window redraws when only a known area of the screen is damaged.
 
-        Notice that you need to call DestroyClippingRegion() if you want to set
+        @remarks
+        - Clipping region should be given in logical coordinates.
+
+        - Calling this function can only make the clipping region smaller,
+        never larger.
+
+        - You need to call DestroyClippingRegion() first if you want to set
         the clipping region exactly to the region specified.
 
-        Also note that if the clipping region is empty, any previously set
-        clipping region is destroyed, i.e. it is equivalent to calling
-        DestroyClippingRegion(), and not to clipping out all drawing on the DC
-        as might be expected.
+        - If resulting clipping region is empty, then all drawing on the DC is
+        clipped out (all changes made by drawing operations are masked out).
 
         @see DestroyClippingRegion(), wxRegion
     */
@@ -851,8 +892,7 @@ public:
                                 const wxFont* font = NULL) const;
     /**
         Gets the dimensions of the string using the currently selected font.
-        @a string is the text string to measure, @e heightLine, if non @NULL,
-        is where to store the height of a single line.
+        @a string is the text string to measure.
 
         @return The text extent as a wxSize object.
 
@@ -1515,7 +1555,8 @@ public:
         Check if the use of transformation matrix is supported by the current
         system.
 
-        Currently this function always returns @false for non-MSW platforms.
+        This function returns @true for MSW and GTK+ 3 platforms and since
+        3.1.1 also for wxGCDC in all ports.
 
         @since 2.9.2
     */
@@ -1650,11 +1691,10 @@ public:
     }
     @endcode
 
-    @note Unlike other similar classes such as wxDCFontChanger, wxDCClipper
-        currently doesn't restore the previously active clipping region when it
-        is destroyed but simply resets clipping on the associated wxDC. This
-        may be changed in the future wxWidgets versions but has to be taken
-        into account explicitly in the current one.
+    @note Since 3.1.1 wxDCClipper restores the previously active clipping
+        region when it is destroyed. Previously it reset clipping on the
+        associated wxDC and this has to be taken into account explicitly in
+        previous wxWidgets versions.
 
     @library{wxcore}
     @category{gdi}
@@ -1846,7 +1886,7 @@ public:
         Set the font to use.
 
         This method is meant to be called once only and only on the objects
-        created with the constructor overload not taking wxColour argument and
+        created with the constructor overload not taking wxFont argument and
         has the same effect as the other constructor, i.e. sets the font to
         the given @a font and ensures that the old value is restored when this
         object is destroyed.

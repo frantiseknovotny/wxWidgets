@@ -125,7 +125,7 @@ wxCONSTRUCTOR_5( wxListCtrl, wxWindow*, Parent, wxWindowID, Id, \
                 wxPoint, Position, wxSize, Size, long, WindowStyle )
 
 /*
- TODO : Expose more information of a list's layout etc. via appropriate objects 
+ TODO : Expose more information of a list's layout etc. via appropriate objects
  (see NotebookPageInfo)
  */
 
@@ -244,10 +244,10 @@ void wxListCtrlBase::EnableAlternateRowColours(bool enable)
     }
 }
 
-wxListItemAttr *wxListCtrlBase::OnGetItemAttr(long item) const
+wxItemAttr *wxListCtrlBase::OnGetItemAttr(long item) const
 {
     return (m_alternateRowColour.GetBackgroundColour().IsOk() && (item % 2))
-        ? wxConstCast(&m_alternateRowColour, wxListItemAttr)
+        ? wxConstCast(&m_alternateRowColour, wxItemAttr)
         : NULL; // no attributes by default
 }
 

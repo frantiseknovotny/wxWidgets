@@ -74,11 +74,6 @@ wxBitmap wxAuiBitmapFromBits(const unsigned char bits[], int w, int h,
 
 wxString wxAuiChopText(wxDC& dc, const wxString& text, int max_size);
 
-inline bool IsDarkColour(const wxColour& c)
-{
-    return (c.Red() + c.Green() + c.Blue()) * c.Alpha() * 2 < 3 * 255 * 255;
-}
-
 static void DrawButtons(wxDC& dc,
                         const wxRect& _rect,
                         const wxBitmap& bmp,
@@ -168,7 +163,7 @@ wxAuiGenericTabArt::wxAuiGenericTabArt()
     m_tabCtrlHeight = 0;
 
 #if defined( __WXMAC__ ) && wxOSX_USE_COCOA_OR_CARBON
-    wxColor baseColour = wxColour( wxMacCreateCGColorFromHITheme(kThemeBrushToolbarBackground));
+    wxColor baseColour = wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOW);
 #else
     wxColor baseColour = wxSystemSettings::GetColour(wxSYS_COLOUR_3DFACE);
 #endif
@@ -227,9 +222,9 @@ void wxAuiGenericTabArt::SetSizingInfo(const wxSize& tab_ctrl_size,
     int tot_width = (int)tab_ctrl_size.x - GetIndentSize() - 4;
 
     if (m_flags & wxAUI_NB_CLOSE_BUTTON)
-        tot_width -= m_activeCloseBmp.GetWidth();
+        tot_width -= m_activeCloseBmp.GetScaledWidth();
     if (m_flags & wxAUI_NB_WINDOWLIST_BUTTON)
-        tot_width -= m_activeWindowListBmp.GetWidth();
+        tot_width -= m_activeWindowListBmp.GetScaledWidth();
 
     if (tab_count > 0)
     {
@@ -267,9 +262,19 @@ void wxAuiGenericTabArt::DrawBackground(wxDC& dc,
                                         const wxRect& rect)
 {
     // draw background
+    int topLightness = 90;
+    int bottomLightness = 170;
+    if ((m_baseColour.Red() < 75)
+        && (m_baseColour.Green() < 75)
+        && (m_baseColour.Blue() < 75))
+    {
+        //dark mode, we cannot go very light
+        topLightness = 90;
+        bottomLightness = 110;
+    }
 
-    wxColor top_color       = m_baseColour.ChangeLightness(90);
-    wxColor bottom_color   = m_baseColour.ChangeLightness(170);
+    wxColor top_color       = m_baseColour.ChangeLightness(topLightness);
+    wxColor bottom_color   = m_baseColour.ChangeLightness(bottomLightness);
     wxRect r;
 
    if (m_flags &wxAUI_NB_BOTTOM)
@@ -421,7 +426,6 @@ void wxAuiGenericTabArt::DrawTab(wxDC& dc,
     int drawn_tab_height = border_points[0].y - border_points[1].y;
 
 
-    wxColour text_colour;
     if (page.active)
     {
         // draw active tab
@@ -433,11 +437,18 @@ void wxAuiGenericTabArt::DrawTab(wxDC& dc,
         dc.DrawRectangle(r.x+1, r.y+1, r.width-1, r.height-4);
 
         // this white helps fill out the gradient at the top of the tab
-        dc.SetPen(*wxWHITE_PEN);
-        dc.SetBrush(*wxWHITE_BRUSH);
-        dc.DrawRectangle(r.x+2, r.y+1, r.width-3, r.height-4);
+        wxColor gradient = *wxWHITE;
+        if ((m_baseColour.Red() < 75)
+            && (m_baseColour.Green() < 75)
+            && (m_baseColour.Blue() < 75))
+        {
+            //dark mode, we go darker
+            gradient = m_activeColour.ChangeLightness(70);
+        }
 
-        text_colour = *wxBLACK;
+        dc.SetPen(wxPen(gradient));
+        dc.SetBrush(wxBrush(gradient));
+        dc.DrawRectangle(r.x+2, r.y+1, r.width-3, r.height-4);
 
         // these two points help the rounded corners appear more antialiased
         dc.SetPen(wxPen(m_activeColour));
@@ -452,7 +463,7 @@ void wxAuiGenericTabArt::DrawTab(wxDC& dc,
         r.y -= 2;
 
         // draw gradient background
-        wxColor top_color = *wxWHITE;
+        wxColor top_color = gradient;
         wxColor bottom_color = m_activeColour;
         dc.GradientFillLinear(r, bottom_color, top_color, wxNORTH);
     }
@@ -472,11 +483,18 @@ void wxAuiGenericTabArt::DrawTab(wxDC& dc,
         r.height--;
 
         // -- draw top gradient fill for glossy look
-        wxColor top_color = m_baseColour.ChangeLightness(160);
-        wxColor bottom_color = m_baseColour;
-        dc.GradientFillLinear(r, top_color, bottom_color, wxSOUTH);
+        wxColor top_color = m_baseColour;
+        wxColor bottom_color = top_color.ChangeLightness(160);
+        if ((m_baseColour.Red() < 75)
+            && (m_baseColour.Green() < 75)
+            && (m_baseColour.Blue() < 75))
+        {
+            //dark mode, we go darker
+            top_color = m_activeColour.ChangeLightness(70);
+            bottom_color = m_baseColour;
+        }
 
-        text_colour = IsDarkColour(bottom_color) ? *wxWHITE : *wxBLACK;
+        dc.GradientFillLinear(r, bottom_color, top_color, wxNORTH);
 
         r.y += r.height;
         r.y--;
@@ -513,7 +531,7 @@ void wxAuiGenericTabArt::DrawTab(wxDC& dc,
     int close_button_width = 0;
     if (close_button_state != wxAUI_BUTTON_STATE_HIDDEN)
     {
-        close_button_width = m_activeCloseBmp.GetWidth();
+        close_button_width = m_activeCloseBmp.GetScaledWidth();
     }
 
     int bitmap_offset = 0;
@@ -524,10 +542,10 @@ void wxAuiGenericTabArt::DrawTab(wxDC& dc,
         // draw bitmap
         dc.DrawBitmap(page.bitmap,
                       bitmap_offset,
-                      drawn_tab_yoff + (drawn_tab_height/2) - (page.bitmap.GetHeight()/2),
+                      drawn_tab_yoff + (drawn_tab_height/2) - (page.bitmap.GetScaledHeight()/2),
                       true);
 
-        text_offset = bitmap_offset + page.bitmap.GetWidth();
+        text_offset = bitmap_offset + page.bitmap.GetScaledWidth();
         text_offset += 3; // bitmap padding
 
     }
@@ -542,7 +560,16 @@ void wxAuiGenericTabArt::DrawTab(wxDC& dc,
                           tab_width - (text_offset-tab_x) - close_button_width);
 
     // draw tab text
-    dc.SetTextForeground(text_colour);
+#if defined( __WXMAC__ )
+    if (page.active)
+    {
+        dc.SetTextForeground(wxSystemSettings::GetColour(wxSYS_COLOUR_CAPTIONTEXT));
+    }
+    else
+    {
+        dc.SetTextForeground(wxSystemSettings::GetColour(wxSYS_COLOUR_INACTIVECAPTIONTEXT));
+    }
+#endif
     dc.DrawText(draw_text,
                 text_offset,
                 drawn_tab_yoff + (drawn_tab_height)/2 - (texty/2) - 1);
@@ -557,8 +584,8 @@ void wxAuiGenericTabArt::DrawTab(wxDC& dc,
         wxRect focusRectBitmap;
 
         if (page.bitmap.IsOk())
-            focusRectBitmap = wxRect(bitmap_offset, drawn_tab_yoff + (drawn_tab_height/2) - (page.bitmap.GetHeight()/2),
-                                            page.bitmap.GetWidth(), page.bitmap.GetHeight());
+            focusRectBitmap = wxRect(bitmap_offset, drawn_tab_yoff + (drawn_tab_height/2) - (page.bitmap.GetScaledHeight()/2),
+                                            page.bitmap.GetScaledWidth(), page.bitmap.GetScaledHeight());
 
         if (page.bitmap.IsOk() && draw_text.IsEmpty())
             focusRect = focusRectBitmap;
@@ -588,7 +615,7 @@ void wxAuiGenericTabArt::DrawTab(wxDC& dc,
             offsetY = 1;
 
         wxRect rect(tab_x + tab_width - close_button_width - 1,
-                    offsetY + (tab_height/2) - (bmp.GetHeight()/2),
+                    offsetY + (tab_height/2) - (bmp.GetScaledHeight()/2),
                     close_button_width,
                     tab_height);
 
@@ -646,14 +673,14 @@ wxSize wxAuiGenericTabArt::GetTabSize(wxDC& dc,
 
     // if the close button is showing, add space for it
     if (close_button_state != wxAUI_BUTTON_STATE_HIDDEN)
-        tab_width += m_activeCloseBmp.GetWidth() + 3;
+        tab_width += m_activeCloseBmp.GetScaledWidth() + 3;
 
     // if there's a bitmap, add space for it
     if (bitmap.IsOk())
     {
-        tab_width += bitmap.GetWidth();
+        tab_width += bitmap.GetScaledWidth();
         tab_width += 3; // right side bitmap padding
-        tab_height = wxMax(tab_height, bitmap.GetHeight());
+        tab_height = wxMax(tab_height, bitmap.GetScaledHeight());
     }
 
     // add padding
@@ -719,15 +746,15 @@ void wxAuiGenericTabArt::DrawButton(wxDC& dc,
     if (orientation == wxLEFT)
     {
         rect.SetX(in_rect.x);
-        rect.SetY(((in_rect.y + in_rect.height)/2) - (bmp.GetHeight()/2));
-        rect.SetWidth(bmp.GetWidth());
-        rect.SetHeight(bmp.GetHeight());
+        rect.SetY(((in_rect.y + in_rect.height)/2) - (bmp.GetScaledHeight()/2));
+        rect.SetWidth(bmp.GetScaledWidth());
+        rect.SetHeight(bmp.GetScaledHeight());
     }
     else
     {
-        rect = wxRect(in_rect.x + in_rect.width - bmp.GetWidth(),
-                      ((in_rect.y + in_rect.height)/2) - (bmp.GetHeight()/2),
-                      bmp.GetWidth(), bmp.GetHeight());
+        rect = wxRect(in_rect.x + in_rect.width - bmp.GetScaledWidth(),
+                      ((in_rect.y + in_rect.height)/2) - (bmp.GetScaledHeight()/2),
+                      bmp.GetScaledWidth(), bmp.GetScaledHeight());
     }
 
     IndentPressedBitmap(&rect, button_state);
@@ -874,9 +901,6 @@ wxAuiSimpleTabArt::wxAuiSimpleTabArt()
     wxColour normaltabColour = baseColour;
     wxColour selectedtabColour = *wxWHITE;
 
-    m_normalTextColour = IsDarkColour(baseColour) ? *wxWHITE : *wxBLACK;
-    m_selectedTextColour = *wxBLACK;
-
     m_bkBrush = wxBrush(backgroundColour);
     m_normalBkBrush = wxBrush(normaltabColour);
     m_normalBkPen = wxPen(normaltabColour);
@@ -919,9 +943,9 @@ void wxAuiSimpleTabArt::SetSizingInfo(const wxSize& tab_ctrl_size,
     int tot_width = (int)tab_ctrl_size.x - GetIndentSize() - 4;
 
     if (m_flags & wxAUI_NB_CLOSE_BUTTON)
-        tot_width -= m_activeCloseBmp.GetWidth();
+        tot_width -= m_activeCloseBmp.GetScaledWidth();
     if (m_flags & wxAUI_NB_WINDOWLIST_BUTTON)
-        tot_width -= m_activeWindowListBmp.GetWidth();
+        tot_width -= m_activeWindowListBmp.GetScaledWidth();
 
     if (tab_count > 0)
     {
@@ -1080,7 +1104,7 @@ void wxAuiSimpleTabArt::DrawTab(wxDC& dc,
     int close_button_width = 0;
     if (close_button_state != wxAUI_BUTTON_STATE_HIDDEN)
     {
-        close_button_width = m_activeCloseBmp.GetWidth();
+        close_button_width = m_activeCloseBmp.GetScaledWidth();
         text_offset = tab_x + (tab_height/2) + ((tab_width-close_button_width)/2) - (textx/2);
     }
     else
@@ -1098,7 +1122,6 @@ void wxAuiSimpleTabArt::DrawTab(wxDC& dc,
                           tab_width - (text_offset-tab_x) - close_button_width);
 
     // draw tab text
-    dc.SetTextForeground(page.active ? m_selectedTextColour : m_normalTextColour);
     dc.DrawText(draw_text,
                  text_offset,
                  (tab_y + tab_height)/2 - (texty/2) + 1);
@@ -1125,7 +1148,7 @@ void wxAuiSimpleTabArt::DrawTab(wxDC& dc,
             bmp = m_disabledCloseBmp;
 
         wxRect rect(tab_x + tab_width - close_button_width - 1,
-                    tab_y + (tab_height/2) - (bmp.GetHeight()/2) + 1,
+                    tab_y + (tab_height/2) - (bmp.GetScaledHeight()/2) + 1,
                     close_button_width,
                     tab_height - 1);
         DrawButtons(dc, rect, bmp, *wxWHITE, close_button_state);
@@ -1178,7 +1201,7 @@ wxSize wxAuiSimpleTabArt::GetTabSize(wxDC& dc,
     wxCoord tab_width = measured_textx + tab_height + 5;
 
     if (close_button_state != wxAUI_BUTTON_STATE_HIDDEN)
-        tab_width += m_activeCloseBmp.GetWidth();
+        tab_width += m_activeCloseBmp.GetScaledWidth();
 
     if (m_flags & wxAUI_NB_TAB_FIXED_WIDTH)
     {
@@ -1238,15 +1261,15 @@ void wxAuiSimpleTabArt::DrawButton(wxDC& dc,
     if (orientation == wxLEFT)
     {
         rect.SetX(in_rect.x);
-        rect.SetY(((in_rect.y + in_rect.height)/2) - (bmp.GetHeight()/2));
-        rect.SetWidth(bmp.GetWidth());
-        rect.SetHeight(bmp.GetHeight());
+        rect.SetY(((in_rect.y + in_rect.height)/2) - (bmp.GetScaledHeight()/2));
+        rect.SetWidth(bmp.GetScaledWidth());
+        rect.SetHeight(bmp.GetScaledHeight());
     }
     else
     {
-        rect = wxRect(in_rect.x + in_rect.width - bmp.GetWidth(),
-                      ((in_rect.y + in_rect.height)/2) - (bmp.GetHeight()/2),
-                      bmp.GetWidth(), bmp.GetHeight());
+        rect = wxRect(in_rect.x + in_rect.width - bmp.GetScaledWidth(),
+                      ((in_rect.y + in_rect.height)/2) - (bmp.GetScaledHeight()/2),
+                      bmp.GetScaledWidth(), bmp.GetScaledHeight());
     }
 
 

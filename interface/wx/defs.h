@@ -911,13 +911,13 @@ enum wxKeyCode
     WXK_CLEAR,
     WXK_SHIFT,
     WXK_ALT,
-    /** Note that under Mac OS X, to improve compatibility with other
+    /** Note that under OS X, to improve compatibility with other
       * systems, 'WXK_CONTROL' represents the 'Command' key. Use this
       * constant to work with keyboard shortcuts. See 'WXK_RAW_CONTROL'
       * to get the state of the actual 'Control' key.
       */
     WXK_CONTROL,
-    /** Under Mac OS X, where the 'Command' key is mapped to 'Control'
+    /** Under OS X, where the 'Command' key is mapped to 'Control'
       * to improve compatibility with other systems, WXK_RAW_CONTROL may
       * be used to obtain the state of the actual 'Control' key
       * ('WXK_CONTROL' would obtain the status of the 'Command' key).
@@ -1015,7 +1015,7 @@ enum wxKeyCode
     WXK_WINDOWS_RIGHT,
     WXK_WINDOWS_MENU ,
     
-    /** This special key code was used to represent the key used for keyboard shortcuts. Under Mac OS X,
+    /** This special key code was used to represent the key used for keyboard shortcuts. Under OS X,
       * this key maps to the 'Command' (aka logo or 'Apple') key, whereas on Linux/Windows/others
       * this is the Control key, with the new semantic of WXK_CONTROL, WXK_COMMAND is not needed anymore
       */
@@ -1698,17 +1698,6 @@ template <typename T> wxDELETEA(T*& array);
     @header{wx/defs.h}
 */
 #define wxDEPRECATED_BUT_USED_INTERNALLY_INLINE(func, body)
-
-/**
-    @c wxEXPLICIT is a macro which expands to the C++ @c explicit keyword if
-    the compiler supports it or nothing otherwise. Thus, it can be used even in
-    the code which might have to be compiled with an old compiler without
-    support for this language feature but still take advantage of it when it is
-    available.
-
-    @header{wx/defs.h}
-*/
-#define wxEXPLICIT
 
 /**
     @c wxOVERRIDE expands to the C++11 @c override keyword if it's supported by

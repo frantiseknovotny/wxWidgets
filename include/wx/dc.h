@@ -325,6 +325,9 @@ public:
 
     virtual void CalcBoundingBox(wxCoord x, wxCoord y)
     {
+      // Bounding box is internally stored in device units.
+      x = LogicalToDeviceX(x);
+      y = LogicalToDeviceY(y);
       if ( m_isBBoxValid )
       {
          if ( x < m_minX ) m_minX = x;
@@ -349,10 +352,11 @@ public:
         m_minX = m_maxX = m_minY = m_maxY = 0;
     }
 
-    wxCoord MinX() const { return m_minX; }
-    wxCoord MaxX() const { return m_maxX; }
-    wxCoord MinY() const { return m_minY; }
-    wxCoord MaxY() const { return m_maxY; }
+    // Get bounding box in logical units.
+    wxCoord MinX() const { return m_isBBoxValid ? DeviceToLogicalX(m_minX) : 0; }
+    wxCoord MaxX() const { return m_isBBoxValid ? DeviceToLogicalX(m_maxX) : 0; }
+    wxCoord MinY() const { return m_isBBoxValid ? DeviceToLogicalY(m_minY) : 0; }
+    wxCoord MaxY() const { return m_isBBoxValid ? DeviceToLogicalY(m_maxY) : 0; }
 
     // setters and getters
 
@@ -442,18 +446,22 @@ public:
     // NB: this function works with device coordinates, not the logical ones!
     virtual void DoSetDeviceClippingRegion(const wxRegion& region) = 0;
 
-    virtual void DoGetClippingBox(wxCoord *x, wxCoord *y,
-                                  wxCoord *w, wxCoord *h) const
-    {
-        if ( x )
-            *x = m_clipX1;
-        if ( y )
-            *y = m_clipY1;
-        if ( w )
-            *w = m_clipX2 - m_clipX1;
-        if ( h )
-            *h = m_clipY2 - m_clipY1;
-    }
+    // Method used to implement wxDC::GetClippingBox().
+    //
+    // Default implementation returns values stored in m_clip[XY][12] member
+    // variables, so this method doesn't need to be overridden if they're kept
+    // up to date.
+    virtual bool DoGetClippingRect(wxRect& rect) const;
+
+#if WXWIN_COMPATIBILITY_3_0
+    // This method is kept for backwards compatibility but shouldn't be used
+    // nor overridden in the new code, implement DoGetClippingRect() above
+    // instead.
+    wxDEPRECATED_BUT_USED_INTERNALLY(
+        virtual void DoGetClippingBox(wxCoord *x, wxCoord *y,
+                                      wxCoord *w, wxCoord *h) const
+    );
+#endif // WXWIN_COMPATIBILITY_3_0
 
     virtual void DestroyClippingRegion() { ResetClipping(); }
 
@@ -662,7 +670,10 @@ private:
     wxDC       *m_owner;
 
 protected:
-    // unset clipping variables (after clipping region was destroyed)
+    // This method exists for backwards compatibility only (while it's not
+    // documented, there are derived classes using it outside wxWidgets
+    // itself), don't use it in any new code and just call wxDCImpl version of
+    // DestroyClippingRegion() to reset the clipping information instead.
     void ResetClipping()
     {
         m_clipping = false;
@@ -709,8 +720,8 @@ protected:
                  m_mm_to_pix_y;
 
     // bounding and clipping boxes
-    wxCoord m_minX, m_minY, m_maxX, m_maxY;
-    wxCoord m_clipX1, m_clipY1, m_clipX2, m_clipY2;
+    wxCoord m_minX, m_minY, m_maxX, m_maxY; // Bounding box is stored in device units.
+    wxCoord m_clipX1, m_clipY1, m_clipX2, m_clipY2;  // Clipping box is stored in logical units.
 
     wxRasterOperationMode m_logicalFunction;
     int m_backgroundMode;
@@ -729,6 +740,9 @@ protected:
 #endif // wxUSE_PALETTE
 
 private:
+    // Return the full DC area in logical coordinates.
+    wxRect GetLogicalArea() const;
+
     wxDECLARE_ABSTRACT_CLASS(wxDCImpl);
 };
 
@@ -952,10 +966,22 @@ public:
     void DestroyClippingRegion()
         { m_pimpl->DestroyClippingRegion(); }
 
-    void GetClippingBox(wxCoord *x, wxCoord *y, wxCoord *w, wxCoord *h) const
-        { m_pimpl->DoGetClippingBox(x, y, w, h); }
-    void GetClippingBox(wxRect& rect) const
-        { m_pimpl->DoGetClippingBox(&rect.x, &rect.y, &rect.width, &rect.height); }
+    bool GetClippingBox(wxCoord *x, wxCoord *y, wxCoord *w, wxCoord *h) const
+    {
+        wxRect r;
+        const bool clipping = m_pimpl->DoGetClippingRect(r);
+        if ( x )
+            *x = r.x;
+        if ( y )
+            *y = r.y;
+        if ( w )
+            *w = r.width;
+        if ( h )
+            *h = r.height;
+        return clipping;
+    }
+    bool GetClippingBox(wxRect& rect) const
+        { return m_pimpl->DoGetClippingRect(rect); }
 
     // coordinates conversions and transforms
 
@@ -1429,16 +1455,36 @@ class WXDLLIMPEXP_CORE wxDCClipper
 {
 public:
     wxDCClipper(wxDC& dc, const wxRegion& r) : m_dc(dc)
-        { dc.SetClippingRegion(r.GetBox()); }
+    {
+        Init(r.GetBox());
+    }
     wxDCClipper(wxDC& dc, const wxRect& r) : m_dc(dc)
-        { dc.SetClippingRegion(r.x, r.y, r.width, r.height); }
+    {
+        Init(r);
+    }
     wxDCClipper(wxDC& dc, wxCoord x, wxCoord y, wxCoord w, wxCoord h) : m_dc(dc)
-        { dc.SetClippingRegion(x, y, w, h); }
+    {
+        Init(wxRect(x, y, w, h));
+    }
 
-    ~wxDCClipper() { m_dc.DestroyClippingRegion(); }
+    ~wxDCClipper()
+    {
+        m_dc.DestroyClippingRegion();
+        if ( m_restoreOld )
+            m_dc.SetClippingRegion(m_oldClipRect);
+    }
 
 private:
+    // Common part of all ctors.
+    void Init(const wxRect& r)
+    {
+        m_restoreOld = m_dc.GetClippingBox(m_oldClipRect);
+        m_dc.SetClippingRegion(r);
+    }
+
     wxDC& m_dc;
+    wxRect m_oldClipRect;
+    bool m_restoreOld;
 
     wxDECLARE_NO_COPY_CLASS(wxDCClipper);
 };

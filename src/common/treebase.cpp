@@ -179,7 +179,7 @@ wxTreeCtrlBase::wxTreeCtrlBase()
     // quick DoGetBestSize calculation
     m_quickBestSize = true;
 
-    Connect(wxEVT_CHAR_HOOK, wxKeyEventHandler(wxTreeCtrlBase::OnCharHook));
+    Bind(wxEVT_CHAR_HOOK, &wxTreeCtrlBase::OnCharHook, this);
 }
 
 wxTreeCtrlBase::~wxTreeCtrlBase()
@@ -279,13 +279,8 @@ wxSize wxTreeCtrlBase::DoGetBestSize() const
     // need some minimal size even for empty tree
     if ( !size.x || !size.y )
         size = wxControl::DoGetBestSize();
-    else
-    {
-        // Add border size
+    else // add border size
         size += GetWindowBorderSize();
-
-        CacheBestSize(size);
-    }
 
     return size;
 }

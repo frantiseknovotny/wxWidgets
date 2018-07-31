@@ -48,6 +48,8 @@
 // other standard headers
 #include <errno.h>
 
+#include <string.h>
+
 #include <stdlib.h>
 
 #include <time.h>
@@ -416,7 +418,7 @@ wxLog::CallDoLogNow(wxLogLevel level,
     {
         const long err = static_cast<long>(num);
 
-        suffix.Printf(_(" (error %ld: %s)"), err, wxSysErrorMsg(err));
+        suffix.Printf(_(" (error %ld: %s)"), err, wxSysErrorMsgStr(err));
     }
 
 #if wxUSE_LOG_TRACE
@@ -837,12 +839,9 @@ void wxLogBuffer::DoLogTextAtLevel(wxLogLevel level, const wxString& msg)
 // wxLogStderr class implementation
 // ----------------------------------------------------------------------------
 
-wxLogStderr::wxLogStderr(FILE *fp)
+wxLogStderr::wxLogStderr(FILE *fp, const wxMBConv& conv)
+           : wxMessageOutputStderr(fp ? fp : stderr, conv)
 {
-    if ( fp == NULL )
-        m_fp = stderr;
-    else
-        m_fp = fp;
 }
 
 void wxLogStderr::DoLogText(const wxString& msg)
@@ -850,7 +849,7 @@ void wxLogStderr::DoLogText(const wxString& msg)
     // First send it to stderr, even if we don't have it (e.g. in a Windows GUI
     // application under) it's not a problem to try to use it and it's easier
     // than determining whether we do have it or not.
-    wxMessageOutputStderr(m_fp).Output(msg);
+    wxMessageOutputStderr::Output(msg);
 
     // under GUI systems such as Windows or Mac, programs usually don't have
     // stderr at all, so show the messages also somewhere else, typically in
@@ -872,7 +871,8 @@ void wxLogStderr::DoLogText(const wxString& msg)
 
 #if wxUSE_STD_IOSTREAM
 #include "wx/ioswrap.h"
-wxLogStream::wxLogStream(wxSTD ostream *ostr)
+wxLogStream::wxLogStream(wxSTD ostream *ostr, const wxMBConv& conv)
+    : wxMessageOutputWithConv(conv)
 {
     if ( ostr == NULL )
         m_ostr = &wxSTD cerr;
@@ -882,7 +882,8 @@ wxLogStream::wxLogStream(wxSTD ostream *ostr)
 
 void wxLogStream::DoLogText(const wxString& msg)
 {
-    (*m_ostr) << msg << wxSTD endl;
+    const wxCharBuffer& buf = PrepareForOutput(msg);
+    m_ostr->write(buf, buf.length());
 }
 #endif // wxUSE_STD_IOSTREAM
 
@@ -1055,15 +1056,12 @@ unsigned long wxSysErrorCode()
 #endif  //Win/Unix
 }
 
-// get error message from system
-const wxChar *wxSysErrorMsg(unsigned long nErrCode)
+static const wxChar* GetSysErrorMsg(wxChar* szBuf, size_t sizeBuf, unsigned long nErrCode)
 {
     if ( nErrCode == 0 )
         nErrCode = wxSysErrorCode();
 
 #if defined(__WINDOWS__)
-    static wxChar s_szBuf[1024];
-
     // get error message from system
     LPVOID lpMsgBuf;
     if ( ::FormatMessage
@@ -1079,8 +1077,8 @@ const wxChar *wxSysErrorMsg(unsigned long nErrCode)
     {
         // if this happens, something is seriously wrong, so don't use _() here
         // for safety
-        wxSprintf(s_szBuf, wxS("unknown error %lx"), nErrCode);
-        return s_szBuf;
+        wxSprintf(szBuf, wxS("unknown error %lx"), nErrCode);
+        return szBuf;
     }
 
 
@@ -1088,35 +1086,63 @@ const wxChar *wxSysErrorMsg(unsigned long nErrCode)
     // Crashes on SmartPhone (FIXME)
     if( lpMsgBuf != 0 )
     {
-        wxStrlcpy(s_szBuf, (const wxChar *)lpMsgBuf, WXSIZEOF(s_szBuf));
+        wxStrlcpy(szBuf, (const wxChar *)lpMsgBuf, sizeBuf);
 
         LocalFree(lpMsgBuf);
 
-        // returned string is capitalized and ended with '\r\n' - bad
-        s_szBuf[0] = (wxChar)wxTolower(s_szBuf[0]);
-        size_t len = wxStrlen(s_szBuf);
-        if ( len > 0 ) {
+        // returned string is ended with '\r\n' - bad
+        size_t len = wxStrlen(szBuf);
+        if ( len >= 2 ) {
             // truncate string
-            if ( s_szBuf[len - 2] == wxS('\r') )
-                s_szBuf[len - 2] = wxS('\0');
+            if ( szBuf[len - 2] == wxS('\r') )
+                szBuf[len - 2] = wxS('\0');
         }
     }
     else
     {
-        s_szBuf[0] = wxS('\0');
+        szBuf[0] = wxS('\0');
     }
 
-    return s_szBuf;
+    return szBuf;
 #else // !__WINDOWS__
+        char buffer[1024];
+        char *errorMsg = buffer;
+
+#ifdef _GNU_SOURCE // GNU-specific strerror_r
+        // GNU's strerror_r has a weird interface -- it doesn't
+        // necessarily copy anything to the buffer given; use return
+        // value instead.
+        errorMsg = strerror_r((int)nErrCode, buffer, sizeof(buffer));
+#elif defined( __VMS )
+        errorMsg = strerror((int)nErrCode);
+#else // XSI-compliant strerror_r
+        strerror_r((int)nErrCode, buffer, sizeof(buffer));
+#endif
+
+        // at this point errorMsg might not point to buffer anymore
+        szBuf[0] = wxS('\0');
     #if wxUSE_UNICODE
-        static wchar_t s_wzBuf[1024];
-        wxConvCurrent->MB2WC(s_wzBuf, strerror((int)nErrCode),
-                             WXSIZEOF(s_wzBuf) - 1);
-        return s_wzBuf;
+        wxConvCurrent->MB2WC(szBuf, errorMsg, sizeBuf - 1);
+        szBuf[sizeBuf - 1] = wxS('\0');
     #else
-        return strerror((int)nErrCode);
+        wxStrlcpy(szBuf, errorMsg, sizeBuf);
     #endif
+        return szBuf;
 #endif  // __WINDOWS__/!__WINDOWS__
+}
+
+// get error message from system
+const wxChar *wxSysErrorMsg(unsigned long nErrCode)
+{
+    static wxChar s_szBuf[1024];
+    return GetSysErrorMsg(s_szBuf, WXSIZEOF(s_szBuf), nErrCode);
+}
+
+// get error message from system as wxString
+wxString wxSysErrorMsgStr(unsigned long nErrCode)
+{
+    wxChar szBuf[1024];
+    return GetSysErrorMsg(szBuf, WXSIZEOF(szBuf), nErrCode);
 }
 
 #endif // wxUSE_LOG

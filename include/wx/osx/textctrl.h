@@ -100,6 +100,7 @@ public:
     virtual void Command(wxCommandEvent& event) wxOVERRIDE;
 
     virtual bool AcceptsFocus() const wxOVERRIDE;
+    virtual void SetWindowStyleFlag(long style) wxOVERRIDE;
 
     // callbacks
     void OnDropFiles(wxDropFilesEvent& event);
@@ -129,6 +130,10 @@ public:
     virtual void MacVisibilityChanged() wxOVERRIDE;
     virtual void MacSuperChangedPosition() wxOVERRIDE;
     virtual void MacCheckSpelling(bool check);
+
+    void OSXEnableAutomaticQuoteSubstitution(bool enable);
+    void OSXEnableAutomaticDashSubstitution(bool enable);
+    void OSXDisableAllSmartSubstitutions();
 
 protected:
     // common part of all ctors

@@ -66,14 +66,14 @@ static void DDEDeleteConnection(HCONV hConv);
 static wxDDEServer *DDEFindServer(const wxString& s);
 
 extern "C" HDDEDATA EXPENTRY
-_DDECallback(WORD wType,
-             WORD wFmt,
+_DDECallback(UINT wType,
+             UINT wFmt,
              HCONV hConv,
              HSZ hsz1,
              HSZ hsz2,
              HDDEDATA hData,
-             DWORD lData1,
-             DWORD lData2);
+             ULONG_PTR lData1,
+             ULONG_PTR lData2);
 
 // Add topic name to atom table before using in conversations
 static HSZ DDEAddAtom(const wxString& string);
@@ -120,8 +120,8 @@ class wxDDEModule : public wxModule
 {
 public:
     wxDDEModule() {}
-    bool OnInit() { return true; }
-    void OnExit() { wxDDECleanUp(); }
+    bool OnInit() wxOVERRIDE { return true; }
+    void OnExit() wxOVERRIDE { wxDDECleanUp(); }
 
 private:
     wxDECLARE_DYNAMIC_CLASS(wxDDEModule);
@@ -149,9 +149,7 @@ extern void wxDDEInitialize()
     if ( !DDEInitialized )
     {
         // Should insert filter flags
-        PFNCALLBACK callback = (PFNCALLBACK)
-            MakeProcInstance((FARPROC)_DDECallback, wxGetInstance());
-        UINT rc = DdeInitialize(&DDEIdInst, callback, APPCLASS_STANDARD, 0L);
+        UINT rc = DdeInitialize(&DDEIdInst, _DDECallback, APPCLASS_STANDARD, 0L);
         if ( rc != DMLERR_NO_ERROR )
         {
             DDELogError(wxT("Failed to initialize DDE"), rc);
@@ -773,14 +771,14 @@ bool wxDDEConnection::DoAdvise(const wxString& item,
 #define DDERETURN HDDEDATA
 
 HDDEDATA EXPENTRY
-_DDECallback(WORD wType,
-             WORD wFmt,
+_DDECallback(UINT wType,
+             UINT wFmt,
              HCONV hConv,
              HSZ hsz1,
              HSZ hsz2,
              HDDEDATA hData,
-             DWORD WXUNUSED(lData1),
-             DWORD WXUNUSED(lData2))
+             ULONG_PTR WXUNUSED(lData1),
+             ULONG_PTR WXUNUSED(lData2))
 {
     switch (wType)
     {
@@ -884,18 +882,20 @@ _DDECallback(WORD wType,
                                                              (wxIPCFormat)wFmt);
                     if (data)
                     {
-                      if (user_size == wxNO_LEN)
-                        switch (wFmt)
+                        if (user_size == wxNO_LEN)
                         {
-                          case wxIPC_TEXT:
-                          case wxIPC_UTF8TEXT:
-                            user_size = strlen((const char*)data) + 1;  // includes final NUL
-                            break;
-                          case wxIPC_UNICODETEXT:
-                            user_size = (wcslen((const wchar_t*)data) + 1) * sizeof(wchar_t);  // includes final NUL
-                            break;
-                          default:
-                            user_size = 0;
+                            switch (wFmt)
+                            {
+                                case wxIPC_TEXT:
+                                case wxIPC_UTF8TEXT:
+                                    user_size = strlen((const char*)data) + 1;  // includes final NUL
+                                    break;
+                                case wxIPC_UNICODETEXT:
+                                    user_size = (wcslen((const wchar_t*)data) + 1) * sizeof(wchar_t);  // includes final NUL
+                                    break;
+                                default:
+                                    user_size = 0;
+                            }
                         }
 
                         HDDEDATA handle = DdeCreateDataHandle(DDEIdInst,

@@ -20,9 +20,7 @@
     #include "wx/arrstr.h"
 #endif
 
-#include <gtk/gtk.h>
 #include "wx/gtk/private.h"
-#include "wx/gtk/private/gtk2-compat.h"
 
 // ----------------------------------------------------------------------------
 // GTK callbacks
@@ -55,7 +53,19 @@ gtkcombobox_popupshown_callback(GObject *WXUNUSED(gobject),
                                   : wxEVT_COMBOBOX_CLOSEUP,
                           combo->GetId() );
     event.SetEventObject( combo );
-    combo->HandleWindowEvent( event );
+
+#ifndef __WXGTK3__
+    // Process the close up event once the combobox is already closed with GTK+
+    // 2, otherwise changing the combobox from its handler result in errors.
+    if ( !isShown )
+    {
+        combo->GetEventHandler()->AddPendingEvent( event );
+    }
+    else
+#endif // GTK+ < 3
+    {
+        combo->HandleWindowEvent( event );
+    }
 }
 
 }
@@ -87,7 +97,10 @@ wxEND_EVENT_TABLE()
 wxComboBox::~wxComboBox()
 {
     if (m_entry)
+    {
         GTKDisconnect(m_entry);
+        g_object_remove_weak_pointer(G_OBJECT(m_entry), (void**)&m_entry);
+    }
 }
 
 void wxComboBox::Init()
@@ -141,6 +154,9 @@ bool wxComboBox::Create( wxWindow *parent, wxWindowID id, const wxString& value,
                                          !HasFlag(wxTE_PROCESS_ENTER) );
 
         gtk_editable_set_editable(GTK_EDITABLE(entry), true);
+#ifdef __WXGTK3__
+        gtk_entry_set_width_chars(entry, 0);
+#endif
     }
 
     Append(n, choices);
@@ -179,9 +195,7 @@ bool wxComboBox::Create( wxWindow *parent, wxWindowID id, const wxString& value,
     g_signal_connect_after (m_widget, "changed",
                         G_CALLBACK (gtkcombobox_changed_callback), this);
 
-#ifndef __WXGTK3__
-    if ( !gtk_check_version(2,10,0) )
-#endif
+    if ( wx_is_at_least_gtk2(10) )
     {
         g_signal_connect (m_widget, "notify::popup-shown",
                           G_CALLBACK (gtkcombobox_popupshown_callback), this);
@@ -200,6 +214,7 @@ void wxComboBox::GTKCreateComboBoxWidget()
     g_object_ref(m_widget);
 
     m_entry = GTK_ENTRY(gtk_bin_get_child(GTK_BIN(m_widget)));
+    g_object_add_weak_pointer(G_OBJECT(m_entry), (void**)&m_entry);
 }
 
 GtkEditable *wxComboBox::GetEditable() const

@@ -35,8 +35,8 @@ class HtmlWindowTestCase : public CppUnit::TestCase
 public:
     HtmlWindowTestCase() { }
 
-    virtual void setUp();
-    virtual void tearDown();
+    virtual void setUp() wxOVERRIDE;
+    virtual void tearDown() wxOVERRIDE;
 
 private:
     CPPUNIT_TEST_SUITE( HtmlWindowTestCase );
@@ -78,7 +78,8 @@ void HtmlWindowTestCase::setUp()
 
 void HtmlWindowTestCase::tearDown()
 {
-    wxDELETE(m_win);
+    DeleteTestWindow(m_win);
+    m_win = NULL;
 }
 
 // ----------------------------------------------------------------------------

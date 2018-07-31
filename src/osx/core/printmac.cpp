@@ -585,9 +585,6 @@ bool wxMacPrinter::Print(wxWindow *parent, wxPrintout *printout, bool prompt)
         return false;
     }
 
-    // on the mac we have always pixels as addressing mode with 72 dpi
-    printout->SetPPIScreen(72, 72);
-
     PMResolution res;
     PMPrinter printer;
     wxOSXPrintData* nativeData = (wxOSXPrintData*)
@@ -608,15 +605,7 @@ bool wxMacPrinter::Print(wxWindow *parent, wxPrintout *printout, bool prompt)
     printout->SetPPIPrinter(int(res.hRes), int(res.vRes));
 
     // Set printout parameters
-    printout->SetDC(dc);
-
-    int w, h;
-    dc->GetSize(&w, &h);
-    printout->SetPageSizePixels((int)w, (int)h);
-    printout->SetPaperRectPixels(dc->GetPaperRect());
-    wxCoord mw, mh;
-    dc->GetSizeMM(&mw, &mh);
-    printout->SetPageSizeMM((int)mw, (int)mh);
+    printout->SetUp(*dc);
 
     // Create an abort window
     wxBeginBusyCursor();
@@ -764,10 +753,9 @@ void wxMacPrintPreview::DetermineScaling(void)
     int screenWidth , screenHeight ;
     wxDisplaySize( &screenWidth , &screenHeight ) ;
 
-    wxSize ppiScreen( 72 , 72 ) ;
+    wxSize ppiScreen = wxGetDisplayPPI();
     wxSize ppiPrinter( 72 , 72 ) ;
 
-    // Note that with Leopard, screen dpi=72 is no longer a given
     m_previewPrintout->SetPPIScreen( ppiScreen.x , ppiScreen.y ) ;
 
     wxCoord w , h ;

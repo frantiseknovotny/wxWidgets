@@ -34,8 +34,7 @@
 #include "wx/private/eventloopsourcesmanager.h"
 #include "wx/apptrait.h"
 
-#include <gtk/gtk.h>
-#include "wx/gtk/private/gtk2-compat.h"
+#include "wx/gtk/private/wrapgtk.h"
 
 GdkWindow* wxGetTopLevelGDK();
 
@@ -385,16 +384,19 @@ void wxGUIEventLoop::DoYieldFor(long eventsToProcess)
 
     wxEventLoopBase::DoYieldFor(eventsToProcess);
 
-    // put all unprocessed GDK events back in the queue
-    GdkDisplay* disp = gdk_window_get_display(wxGetTopLevelGDK());
-    for (size_t i=0; i<m_arrGdkEvents.GetCount(); i++)
+    // put any unprocessed GDK events back in the queue
+    if ( !m_arrGdkEvents.IsEmpty() )
     {
-        GdkEvent* ev = (GdkEvent*)m_arrGdkEvents[i];
+        GdkDisplay* disp = gdk_window_get_display(wxGetTopLevelGDK());
+        for (size_t i=0; i<m_arrGdkEvents.GetCount(); i++)
+        {
+            GdkEvent* ev = (GdkEvent*)m_arrGdkEvents[i];
 
-        // NOTE: gdk_display_put_event makes a copy of the event passed to it
-        gdk_display_put_event(disp, ev);
-        gdk_event_free(ev);
+            // NOTE: gdk_display_put_event makes a copy of the event passed to it
+            gdk_display_put_event(disp, ev);
+            gdk_event_free(ev);
+        }
+
+        m_arrGdkEvents.Clear();
     }
-
-    m_arrGdkEvents.Clear();
 }

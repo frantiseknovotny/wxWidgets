@@ -24,8 +24,6 @@
 // the default names for various classes
 extern WXDLLIMPEXP_DATA_CORE(const char) wxFrameNameStr[];
 
-class WXDLLIMPEXP_FWD_CORE wxTopLevelWindowBase;
-
 // ----------------------------------------------------------------------------
 // constants
 // ----------------------------------------------------------------------------
@@ -240,13 +238,42 @@ public:
     wxWindow *SetTmpDefaultItem(wxWindow *win)
         { wxWindow *old = GetDefaultItem(); m_winTmpDefault = win; return old; }
 
+
+    // Class for saving/restoring fields describing the window geometry.
+    //
+    // This class is used by the functions below to allow saving the geometry
+    // of the window and restoring it later. The components describing geometry
+    // are platform-dependent, so there is no struct containing them and
+    // instead the methods of this class are used to save or [try to] restore
+    // whichever components are used under the current platform.
+    class GeometrySerializer
+    {
+    public:
+        virtual ~GeometrySerializer() {}
+
+        // If saving a field returns false, it's fatal error and SaveGeometry()
+        // will return false.
+        virtual bool SaveField(const wxString& name, int value) const = 0;
+
+        // If restoring a field returns false, it just means that the field is
+        // not present and RestoreToGeometry() still continues with restoring
+        // the other values.
+        virtual bool RestoreField(const wxString& name, int* value) = 0;
+    };
+
+    // Save the current window geometry using the provided serializer and
+    // restore the window to the previously saved geometry.
+    bool SaveGeometry(const GeometrySerializer& ser) const;
+    bool RestoreToGeometry(GeometrySerializer& ser);
+
+
     // implementation only from now on
     // -------------------------------
 
     // override some base class virtuals
     virtual bool Destroy() wxOVERRIDE;
     virtual bool IsTopLevel() const wxOVERRIDE { return true; }
-    virtual bool IsTopNavigationDomain() const wxOVERRIDE { return true; }
+    virtual bool IsTopNavigationDomain(NavigationKind kind) const wxOVERRIDE;
     virtual bool IsVisible() const { return IsShown(); }
 
     // event handlers

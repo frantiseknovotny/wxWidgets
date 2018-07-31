@@ -132,7 +132,10 @@
           Processes a @c wxEVT_TREE_ITEM_GETTOOLTIP event type.
     @event{EVT_TREE_ITEM_MENU(id, func)}
           The context menu for the selected item has been requested, either by a
-          right click or by using the menu key.
+          right click or by using the menu key. Notice that these events always
+          carry a valid tree item and so are not generated when (right)
+          clicking outside of the items area. If you need to handle such
+          events, consider using @c wxEVT_CONTEXT_MENU instead.
           Processes a @c wxEVT_TREE_ITEM_MENU event type.
     @event{EVT_TREE_STATE_IMAGE_CLICK(id, func)}
           The state image has been clicked.
@@ -208,7 +211,7 @@ public:
 
         The @a image and @a selImage parameters are an index within the normal
         image list specifying the image to use for unselected and selected
-        items, respectively. If @a image -1 and @a selImage is -1, the same
+        items, respectively. If @a image > -1 and @a selImage is -1, the same
         image is used for both selected and unselected items.
     */
     virtual wxTreeItemId AddRoot(const wxString& text, int image = -1,
@@ -693,7 +696,7 @@ public:
 
         The @a image and @a selImage parameters are an index within the normal
         image list specifying the image to use for unselected and selected
-        items, respectively. If @a image -1 and @a selImage is -1, the same
+        items, respectively. If @a image > -1 and @a selImage is -1, the same
         image is used for both selected and unselected items.
     */
     wxTreeItemId InsertItem(const wxTreeItemId& parent,
@@ -710,7 +713,7 @@ public:
 
         The @a image and @a selImage parameters are an index within the normal
         image list specifying the image to use for unselected and selected
-        items, respectively. If @a image -1 and @a selImage is -1, the same
+        items, respectively. If @a image > -1 and @a selImage is -1, the same
         image is used for both selected and unselected items.
     */
     wxTreeItemId InsertItem(const wxTreeItemId& parent,
@@ -776,7 +779,7 @@ public:
 
         The @a image and @a selImage parameters are an index within the normal
         image list specifying the image to use for unselected and selected
-        items, respectively. If @a image -1 and @a selImage is -1, the same
+        items, respectively. If @a image > -1 and @a selImage is -1, the same
         image is used for both selected and unselected items.
     */
     wxTreeItemId PrependItem(const wxTreeItemId& parent,
@@ -899,7 +902,8 @@ public:
                               wxTreeItemIcon which = wxTreeItemIcon_Normal);
 
     /**
-        Sets the specified item state. The value of @a state may be:
+        Sets the specified item state. The value of @a state may be an index
+        into the state image list, or one of the special values:
         - @c wxTREE_ITEMSTATE_NONE: to disable the item state (the state image will
             be not displayed).
         - @c wxTREE_ITEMSTATE_NEXT: to set the next item state.

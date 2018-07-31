@@ -19,7 +19,7 @@
 
 // keep cairo.h from defining dllimport as we're defining the symbols inside
 // the wx dll in order to load them dynamically.
-#define cairo_public 
+#define cairo_public
 
 #include <cairo.h>
 #include "wx/dynlib.h"
@@ -40,7 +40,7 @@
 
 #define wxCAIRO_METHOD_TYPE(name) \
     wxCairo##name##_t
-    
+
 #define wxCAIRO_STATIC_METHOD_DEFINE(rettype, name, args, argnames, defret) \
    static wxCAIRO_METHOD_TYPE(name) name;
 
@@ -100,6 +100,8 @@
         (cairo_t *cr, double alpha), (cr, alpha) ) \
     m( cairo_path_destroy, \
         (cairo_path_t *path), (path) ) \
+    m( cairo_path_extents, \
+        (cairo_t *cr, double *x1, double *y1, double *x2, double *y2), (cr, x1, y1, x2, y2) ) \
     m( cairo_pattern_add_color_stop_rgba, \
         (cairo_pattern_t *pattern, double offset, double red, double green, double blue, double alpha), (pattern, offset, red, green, blue, alpha) ) \
     m( cairo_pattern_destroy, \
@@ -168,6 +170,12 @@
         (cairo_t *cr, double tx, double ty), (cr, tx, ty) ) \
     m( cairo_surface_flush, \
        (cairo_surface_t *surface), (surface) ) \
+    m( cairo_set_source_surface, \
+       (cairo_t *cr, cairo_surface_t *surface, double x, double y), (cr, surface, x, y) ) \
+    m( cairo_matrix_init_identity, \
+       (cairo_matrix_t *matrix), (matrix) ) \
+    m( cairo_clip_extents, \
+       (cairo_t *cr, double *x1, double *y1, double *x2, double *y2), (cr, x1, y1, x2, y2) ) \
 
 #ifdef __WXMAC__
 #define wxCAIRO_PLATFORM_METHODS(m) \
@@ -179,10 +187,14 @@
 #define wxCAIRO_PLATFORM_METHODS(m) \
     m( cairo_surface_t*, cairo_win32_surface_create, \
         (HDC hdc), (hdc), NULL ) \
+    m( cairo_surface_t*, cairo_win32_surface_create_with_format, \
+        (HDC hdc, cairo_format_t format), (hdc, format), NULL ) \
     m( cairo_surface_t*, cairo_win32_printing_surface_create, \
-        (HDC hdc), (hdc), NULL )
+        (HDC hdc), (hdc), NULL ) \
+    m( HDC, cairo_win32_surface_get_dc, \
+       (cairo_surface_t *surface), (surface), NULL )
 #else
-#define wxCAIRO_PLATFORM_METHODS(m) 
+#define wxCAIRO_PLATFORM_METHODS(m)
 #endif
 
 #define wxFOR_ALL_CAIRO_METHODS(m) \
@@ -230,6 +242,10 @@
        (cairo_surface_t *surface), (surface), -1) \
     m( const char *, cairo_version_string, \
        (), () , NULL ) \
+    m( cairo_surface_t*, cairo_surface_create_similar_image, \
+       (cairo_surface_t *other, cairo_format_t format, int width, int height), (other, format, width, height), NULL) \
+    m( cairo_status_t, cairo_surface_status, \
+       (cairo_surface_t *surface), (surface), CAIRO_STATUS_SUCCESS) \
     wxCAIRO_PLATFORM_METHODS(m)
 
 #define wxCAIRO_DECLARE_TYPE(rettype, name, args, argnames, defret) \
@@ -238,7 +254,7 @@
 
 #define wxCAIRO_DECLARE_VOIDTYPE(name, args, argnames) \
    wxCAIRO_DECLARE_TYPE(void, name, args, argnames, NULL)
-   
+
 wxFOR_ALL_CAIRO_VOIDMETHODS(wxCAIRO_DECLARE_VOIDTYPE)
 wxFOR_ALL_CAIRO_METHODS(wxCAIRO_DECLARE_TYPE)
 
@@ -300,6 +316,8 @@ wxCairo::wxCairo()
 
 #ifdef __WXMSW__
     wxString cairoDllStr("libcairo-2.dll");
+#elif defined(__WXOSX__)
+    wxString cairoDllStr("libcairo.2.dylib");
 #else
     wxString cairoDllStr("libcairo.so.2");
 #endif
@@ -318,7 +336,7 @@ wxCairo::wxCairo()
     }
 #endif
 
-    
+
 #define wxDO_LOAD_FUNC(name, nameStr)                                     \
     name = (wxCAIRO_METHOD_TYPE(name))m_libCairo.RawGetSymbol(nameStr);      \
     if ( !name )                                                          \

@@ -42,12 +42,12 @@
 #endif
 
 #ifdef __WXGTK__
-#include <gtk/gtk.h>
 #include "wx/renderer.h"
 #ifdef __WXGTK20__
-   #include "wx/gtk/private/gtk2-compat.h"
+    #include "wx/gtk/private/wrapgtk.h"
 #else
-   #define gtk_widget_is_drawable GTK_WIDGET_DRAWABLE
+    #include <gtk/gtk.h>
+    #define gtk_widget_is_drawable GTK_WIDGET_DRAWABLE
 #endif
 #ifdef __WXGTK3__
     #include "wx/graphics.h"
@@ -157,7 +157,7 @@ wxString wxAuiChopText(wxDC& dc, const wxString& text, int max_size)
 wxAuiDefaultDockArt::wxAuiDefaultDockArt()
 {
 #if defined( __WXMAC__ ) && wxOSX_USE_COCOA_OR_CARBON
-    wxColor baseColour = wxColour( wxMacCreateCGColorFromHITheme(kThemeBrushToolbarBackground));
+    wxColor baseColour = wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOW);
 #else
     wxColor baseColour = wxSystemSettings::GetColour(wxSYS_COLOUR_3DFACE);
 #endif
@@ -172,21 +172,30 @@ wxAuiDefaultDockArt::wxAuiDefaultDockArt()
     }
 
     m_baseColour = baseColour;
+    wxColor darker1Colour = baseColour.ChangeLightness(85);
+    wxColor darker2Colour = baseColour.ChangeLightness(75);
+    wxColor darker3Colour = baseColour.ChangeLightness(60);
+    //wxColor darker4Colour = baseColour.ChangeLightness(50);
+    wxColor darker5Colour = baseColour.ChangeLightness(40);
 
-    m_activeCaptionColour = wxSystemSettings::GetColour(wxSYS_COLOUR_ACTIVECAPTION);
-    m_activeCaptionGradientColour = wxSystemSettings::GetColour(wxSYS_COLOUR_GRADIENTACTIVECAPTION);
-    m_activeCaptionTextColour = wxSystemSettings::GetColour(wxSYS_COLOUR_CAPTIONTEXT);
-    m_inactiveCaptionColour = wxSystemSettings::GetColour(wxSYS_COLOUR_INACTIVECAPTION);
-    m_inactiveCaptionGradientColour = wxSystemSettings::GetColour(wxSYS_COLOUR_GRADIENTINACTIVECAPTION);
+    m_activeCaptionColour = wxSystemSettings::GetColour(wxSYS_COLOUR_HIGHLIGHT);
+    m_activeCaptionGradientColour = wxAuiLightContrastColour(wxSystemSettings::GetColour(wxSYS_COLOUR_HIGHLIGHT));
+    m_activeCaptionTextColour = wxSystemSettings::GetColour(wxSYS_COLOUR_HIGHLIGHTTEXT);
+    m_inactiveCaptionColour = darker1Colour;
+    m_inactiveCaptionGradientColour = baseColour.ChangeLightness(97);
+#ifdef __WXMAC__
     m_inactiveCaptionTextColour = wxSystemSettings::GetColour(wxSYS_COLOUR_INACTIVECAPTIONTEXT);
+#else
+    m_inactiveCaptionTextColour = *wxBLACK;
+#endif
 
     m_sashBrush = wxBrush(baseColour);
     m_backgroundBrush = wxBrush(baseColour);
     m_gripperBrush = wxBrush(baseColour);
 
-    m_borderPen = wxPen(baseColour.ChangeLightness(75));
-    m_gripperPen1 = wxPen(baseColour.ChangeLightness(40));
-    m_gripperPen2 = wxPen(baseColour.ChangeLightness(60));
+    m_borderPen = wxPen(darker2Colour);
+    m_gripperPen1 = wxPen(darker5Colour);
+    m_gripperPen2 = wxPen(darker3Colour);
     m_gripperPen3 = *wxWHITE_PEN;
 
 #ifdef __WXMAC__
@@ -378,16 +387,25 @@ void wxAuiDefaultDockArt::DrawSash(wxDC& dc, wxWindow *window, int orientation, 
     wxUnusedVar(window);
     wxUnusedVar(orientation);
 
-    HIRect splitterRect = CGRectMake( rect.x , rect.y , rect.width , rect.height );
-    CGContextRef cgContext ;
-    wxGCDCImpl *impl = (wxGCDCImpl*) dc.GetImpl();
-    cgContext = (CGContextRef) impl->GetGraphicsContext()->GetNativeContext() ;
+    if ( wxPlatformInfo::Get().CheckOSVersion(10, 14) && wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOW).Red() < 128 )
+    {
+        dc.SetPen(*wxTRANSPARENT_PEN);
+        dc.SetBrush(m_sashBrush);
+        dc.DrawRectangle(rect.x, rect.y, rect.width, rect.height);
+    }
+    else
+    {
+        HIRect splitterRect = CGRectMake( rect.x , rect.y , rect.width , rect.height );
+        CGContextRef cgContext ;
+        wxGCDCImpl *impl = (wxGCDCImpl*) dc.GetImpl();
+        cgContext = (CGContextRef) impl->GetGraphicsContext()->GetNativeContext() ;
 
-    HIThemeSplitterDrawInfo drawInfo ;
-    drawInfo.version = 0 ;
-    drawInfo.state = kThemeStateActive ;
-    drawInfo.adornment = kHIThemeSplitterAdornmentNone ;
-    HIThemeDrawPaneSplitter( &splitterRect , &drawInfo , cgContext , kHIThemeOrientationNormal ) ;
+        HIThemeSplitterDrawInfo drawInfo ;
+        drawInfo.version = 0 ;
+        drawInfo.state = kThemeStateActive ;
+        drawInfo.adornment = kHIThemeSplitterAdornmentNone ;
+        HIThemeDrawPaneSplitter( &splitterRect , &drawInfo , cgContext , kHIThemeOrientationNormal ) ;
+    }
 
 #elif defined(__WXGTK__)
     // clear out the rectangle first
@@ -582,7 +600,7 @@ void wxAuiDefaultDockArt::DrawCaption(wxDC& dc, wxWindow *WXUNUSED(window),
     {
         DrawIcon(dc, rect, pane);
 
-        caption_offset += pane.icon.GetWidth() + 3;
+        caption_offset += pane.icon.GetScaledWidth() + 3;
     }
 
     if (pane.state & wxAuiPaneInfo::optionActive)
@@ -616,7 +634,7 @@ wxAuiDefaultDockArt::DrawIcon(wxDC& dc, const wxRect& rect, wxAuiPaneInfo& pane)
 {
    // Draw the icon centered vertically
    dc.DrawBitmap(pane.icon,
-                 rect.x+2, rect.y+(rect.height-pane.icon.GetHeight())/2,
+                 rect.x+2, rect.y+(rect.height-pane.icon.GetScaledHeight())/2,
                  true);
 }
 
@@ -715,7 +733,7 @@ void wxAuiDefaultDockArt::DrawPaneButton(wxDC& dc, wxWindow *WXUNUSED(window),
     wxRect rect = _rect;
 
     int old_y = rect.y;
-    rect.y = rect.y + (rect.height/2) - (bmp.GetHeight()/2);
+    rect.y = rect.y + (rect.height/2) - (bmp.GetScaledHeight()/2);
     rect.height = old_y + rect.height - rect.y - 1;
 
 

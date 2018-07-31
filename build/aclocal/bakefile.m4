@@ -377,7 +377,7 @@ AC_DEFUN([AC_BAKEFILE_SHARED_LD],
         fi
       ;;
 
-      *-*-cygwin* | *-*-mingw32* )
+      *-*-cygwin* | *-*-mingw32* | *-*-mingw64* )
         PIC_FLAG=""
         SHARED_LD_CC="\$(CC) -shared -o"
         SHARED_LD_CXX="\$(CXX) -shared -o"
@@ -385,7 +385,7 @@ AC_DEFUN([AC_BAKEFILE_SHARED_LD],
       ;;
 
       powerpc-apple-macos* | \
-      *-*-freebsd* | *-*-openbsd* | *-*-netbsd* | *-*-gnu* | *-*-k*bsd*-gnu | \
+      *-*-freebsd* | *-*-openbsd* | *-*-haiku* | *-*-netbsd* | *-*-gnu* | *-*-k*bsd*-gnu | \
       *-*-mirbsd* | \
       *-*-sunos4* | \
       *-*-osf* | \
@@ -435,7 +435,7 @@ AC_DEFUN([AC_BAKEFILE_SHARED_VERSIONS],
     SONAME_FLAG=
 
     case "${BAKEFILE_HOST}" in
-      *-*-linux* | *-*-freebsd* | *-*-openbsd* | *-*-netbsd* | \
+      *-*-linux* | *-*-freebsd* | *-*-openbsd* | *-*-haiku* | *-*-netbsd* | \
       *-*-k*bsd*-gnu | *-*-mirbsd* | *-*-gnu* )
         if test "x$SUNCXX" = "xyes"; then
             SONAME_FLAG="-h "
@@ -501,10 +501,6 @@ AC_DEFUN([AC_BAKEFILE_DEPS],
             DEPSMODE=gcc
             DEPSFLAG="-MMD"
             AC_MSG_RESULT([gcc])
-        elif test "x$MWCC" = "xyes"; then
-            DEPSMODE=mwcc
-            DEPSFLAG="-MM"
-            AC_MSG_RESULT([mwcc])
         elif test "x$SUNCC" = "xyes"; then
             DEPSMODE=unixcc
             DEPSFLAG="-xM1"
@@ -576,13 +572,13 @@ AC_DEFUN([AC_BAKEFILE_CHECK_BASIC_STUFF],
     AC_CHECK_TOOL(STRIP, strip, :)
     AC_CHECK_TOOL(NM, nm, :)
 
-    dnl Don't use `install -d`, see http://trac.wxwidgets.org/ticket/13452
+    dnl Don't use `install -d`, see https://trac.wxwidgets.org/ticket/13452
     INSTALL_DIR="mkdir -p"
     AC_SUBST(INSTALL_DIR)
 
     LDFLAGS_GUI=
     case ${BAKEFILE_HOST} in
-        *-*-cygwin* | *-*-mingw32* )
+        *-*-cygwin* | *-*-mingw32* | *-*-mingw64* )
         LDFLAGS_GUI="-mwindows"
     esac
     AC_SUBST(LDFLAGS_GUI)
@@ -598,20 +594,13 @@ dnl ---------------------------------------------------------------------------
 AC_DEFUN([AC_BAKEFILE_RES_COMPILERS],
 [
     case ${BAKEFILE_HOST} in
-        *-*-cygwin* | *-*-mingw32* )
+        *-*-cygwin* | *-*-mingw32* | *-*-mingw64* )
             dnl Check for win32 resources compiler:
             AC_CHECK_TOOL(WINDRES, windres)
          ;;
-
-      *-*-darwin* | powerpc-apple-macos* )
-            AC_CHECK_PROG(REZ, Rez, Rez, /Developer/Tools/Rez)
-            AC_CHECK_PROG(SETFILE, SetFile, SetFile, /Developer/Tools/SetFile)
-        ;;
     esac
 
     AC_SUBST(WINDRES)
-    AC_SUBST(REZ)
-    AC_SUBST(SETFILE)
 ])
 
 dnl ---------------------------------------------------------------------------
@@ -756,7 +745,7 @@ AC_DEFUN([AC_BAKEFILE],
     AC_SUBST(OBJCXXFLAGS)
 
 
-    BAKEFILE_BAKEFILE_M4_VERSION="0.2.9"
+    BAKEFILE_BAKEFILE_M4_VERSION="0.2.11"
 
     dnl includes autoconf_inc.m4:
     $1
@@ -841,34 +830,6 @@ if test ${D}DEPSMODE = gcc ; then
             rm -f ${D}depfile
         fi
     fi
-    exit 0
-
-elif test ${D}DEPSMODE = mwcc ; then
-    ${D}* || exit ${D}?
-    # Run mwcc again with -MM and redirect into the dep file we want
-    # NOTE: We can't use shift here because we need ${D}* to be valid
-    prevarg=
-    for arg in ${D}* ; do
-        if test "${D}prevarg" = "-o"; then
-            objfile=${D}arg
-        else
-            case "${D}arg" in
-                -* )
-                ;;
-                * )
-                    srcfile=${D}arg
-                ;;
-            esac
-        fi
-        prevarg="${D}arg"
-    done
-
-    objfilebase=\`basename ${D}objfile\`
-    builddir=\`dirname ${D}objfile\`
-    depsdir=${D}builddir/${D}DEPSDIRBASE
-    mkdir -p ${D}depsdir
-
-    ${D}* ${D}DEPSFLAG >${D}{depsdir}/${D}{objfilebase}.d
     exit 0
 
 elif test ${D}DEPSMODE = unixcc; then

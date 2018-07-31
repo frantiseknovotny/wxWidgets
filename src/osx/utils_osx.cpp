@@ -63,31 +63,25 @@ bool wxColourDisplay()
 
 #if wxOSX_USE_COCOA_OR_CARBON
 
-#if (MAC_OS_X_VERSION_MAX_ALLOWED >= 1070) && (MAC_OS_X_VERSION_MIN_REQUIRED < 1060)
-// bring back declaration so that we can support deployment targets < 10_6
-CG_EXTERN size_t CGDisplayBitsPerPixel(CGDirectDisplayID display)
-CG_AVAILABLE_BUT_DEPRECATED(__MAC_10_0, __MAC_10_6,
-                            __IPHONE_NA, __IPHONE_NA);
-#endif
-
 // Returns depth of screen
 int wxDisplayDepth()
 {
-    int theDepth = 0;
-    
     CGDisplayModeRef currentMode = CGDisplayCopyDisplayMode(kCGDirectMainDisplay);
     CFStringRef encoding = CGDisplayModeCopyPixelEncoding(currentMode);
-    
-    if(CFStringCompare(encoding, CFSTR(IO32BitDirectPixels), kCFCompareCaseInsensitive) == kCFCompareEqualTo)
-        theDepth = 32;
-    else if(CFStringCompare(encoding, CFSTR(IO16BitDirectPixels), kCFCompareCaseInsensitive) == kCFCompareEqualTo)
-        theDepth = 16;
-    else if(CFStringCompare(encoding, CFSTR(IO8BitIndexedPixels), kCFCompareCaseInsensitive) == kCFCompareEqualTo)
-        theDepth = 8;
-    else
-        theDepth = 32; // some reasonable default
 
-    CFRelease(encoding);
+    int theDepth = 32; // some reasonable default
+    if(encoding)
+    {
+        if(CFStringCompare(encoding, CFSTR(IO32BitDirectPixels), kCFCompareCaseInsensitive) == kCFCompareEqualTo)
+            theDepth = 32;
+        else if(CFStringCompare(encoding, CFSTR(IO16BitDirectPixels), kCFCompareCaseInsensitive) == kCFCompareEqualTo)
+            theDepth = 16;
+        else if(CFStringCompare(encoding, CFSTR(IO8BitIndexedPixels), kCFCompareCaseInsensitive) == kCFCompareEqualTo)
+            theDepth = 8;
+
+        CFRelease(encoding);
+    }
+
     CGDisplayModeRelease(currentMode);
 
     return theDepth;
@@ -157,22 +151,32 @@ bool wxDoLaunchDefaultBrowser(const wxLaunchBrowserParams& params)
 
 void wxDisplaySizeMM(int *width, int *height)
 {
+#if wxOSX_USE_IPHONE
     wxDisplaySize(width, height);
     // on mac 72 is fixed (at least now;-)
     double cvPt2Mm = 25.4 / 72;
-
+    
     if (width != NULL)
         *width = int( *width * cvPt2Mm );
-
+    
     if (height != NULL)
         *height = int( *height * cvPt2Mm );
+#else
+    CGSize size = CGDisplayScreenSize(CGMainDisplayID());
+    if ( width )
+        *width = (int)size.width ;
+    if ( height )
+        *height = (int)size.height;
+#endif
 }
 
 
-wxPortId wxGUIAppTraits::GetToolkitVersion(int *verMaj, int *verMin) const
+wxPortId wxGUIAppTraits::GetToolkitVersion(int *verMaj,
+                                           int *verMin,
+                                           int *verMicro) const
 {
     // We suppose that toolkit version is the same as OS version under Mac
-    wxGetOsVersion(verMaj, verMin);
+    wxGetOsVersion(verMaj, verMin, verMicro);
 
     return wxPORT_OSX;
 }
@@ -208,7 +212,7 @@ CGColorSpaceRef wxMacGetGenericRGBColorSpace()
 #if wxOSX_USE_IPHONE
         genericRGBColorSpace.reset( CGColorSpaceCreateDeviceRGB() );
 #else
-        genericRGBColorSpace.reset( CGColorSpaceCreateWithName( kCGColorSpaceGenericRGB ) );
+        genericRGBColorSpace.reset( CGColorSpaceCreateWithName( kCGColorSpaceSRGB ) );
 #endif
     }
 

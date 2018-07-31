@@ -151,7 +151,7 @@ wxDEFINE_EVENT( wxEVT_GRID_TABBING, wxGridEvent );
 
 namespace
 {
-    
+
     // ensure that first is less or equal to second, swapping the values if
     // necessary
     void EnsureFirstLessThanSecond(int& first, int& second)
@@ -159,7 +159,7 @@ namespace
         if ( first > second )
             wxSwap(first, second);
     }
-    
+
 } // anonymous namespace
 
 // ============================================================================
@@ -1311,7 +1311,7 @@ void wxGridStringTable::Clear()
         {
             for ( col = 0; col < numCols; col++ )
             {
-                m_data[row][col] = wxEmptyString;
+                m_data[row][col].clear();
             }
         }
     }
@@ -1871,7 +1871,10 @@ void wxGrid::Render( wxDC& dc,
     dc.DrawRectangle( pointOffSet, sizeCells );
 
     // draw cells
-    DrawGridCellArea( dc, renderCells );
+    {
+        wxDCClipper clipper( dc, wxRect(pointOffSet, sizeCells) );
+        DrawGridCellArea( dc, renderCells );
+    }
 
     // draw grid lines
     if ( style & wxGRID_DRAW_CELL_LINES )
@@ -2322,6 +2325,17 @@ wxGrid::SetTable(wxGridTableBase *table,
 
         if (m_table)
         {
+            // We can't leave the in-place control editing the data of the
+            // table alive, as it would try to use the table object that we
+            // don't have any more later otherwise, so hide it manually.
+            //
+            // Notice that we can't call DisableCellEditControl() from here
+            // which would try to save the current editor value into the table
+            // which might be half-deleted by now, so we have to manually mark
+            // the edit control as being disabled.
+            HideCellEditControl();
+            m_cellEditCtrlEnabled = false;
+
             m_table->SetView(0);
             if( m_ownTable )
                 delete m_table;
@@ -3927,7 +3941,7 @@ wxGrid::DoGridCellDrag(wxMouseEvent& event,
                        bool isFirstDrag)
 {
     bool performDefault = true ;
-    
+
     if ( coords == wxGridNoCellCoords )
         return performDefault; // we're outside any valid cell
 
@@ -3959,7 +3973,7 @@ wxGrid::DoGridCellDrag(wxMouseEvent& event,
                     // if event is handled by user code, no further processing
                     if ( SendEvent(wxEVT_GRID_CELL_BEGIN_DRAG, coords, event) != 0 )
                         performDefault = false;
-                    
+
                     return performDefault;
                 }
             }
@@ -3971,7 +3985,7 @@ wxGrid::DoGridCellDrag(wxMouseEvent& event,
             // we don't handle the other key modifiers
             event.Skip();
     }
-    
+
     return performDefault;
 }
 
@@ -4538,12 +4552,6 @@ bool wxGrid::ProcessTableMessage( wxGridTableMessage& msg )
 {
     switch ( msg.GetId() )
     {
-        case wxGRIDTABLE_REQUEST_VIEW_GET_VALUES:
-            return GetModelValues();
-
-        case wxGRIDTABLE_REQUEST_VIEW_SEND_VALUES:
-            return SetModelValues();
-
         case wxGRIDTABLE_NOTIFY_ROWS_INSERTED:
         case wxGRIDTABLE_NOTIFY_ROWS_APPENDED:
         case wxGRIDTABLE_NOTIFY_ROWS_DELETED:
@@ -4692,7 +4700,7 @@ wxGrid::SendEvent(wxEventType type,
            // explicitly allow the event for it to take place
            gridEvt.Veto();
        }
-              
+
        claimed = GetEventHandler()->ProcessEvent(gridEvt);
        vetoed = !gridEvt.IsAllowed();
    }
@@ -5306,51 +5314,6 @@ wxGrid::UpdateBlockBeingSelected(int topRow, int leftCol,
     // change selection
     m_selectedBlockTopLeft = updateTopLeft;
     m_selectedBlockBottomRight = updateBottomRight;
-}
-
-//
-// ------ functions to get/send data (see also public functions)
-//
-
-bool wxGrid::GetModelValues()
-{
-    // Hide the editor, so it won't hide a changed value.
-    HideCellEditControl();
-
-    if ( m_table )
-    {
-        // all we need to do is repaint the grid
-        //
-        m_gridWin->Refresh();
-        return true;
-    }
-
-    return false;
-}
-
-bool wxGrid::SetModelValues()
-{
-    int row, col;
-
-    // Disable the editor, so it won't hide a changed value.
-    // Do we also want to save the current value of the editor first?
-    // I think so ...
-    DisableCellEditControl();
-
-    if ( m_table )
-    {
-        for ( row = 0; row < m_numRows; row++ )
-        {
-            for ( col = 0; col < m_numCols; col++ )
-            {
-                m_table->SetValue( row, col, GetCellValue(row, col) );
-            }
-        }
-
-        return true;
-    }
-
-    return false;
 }
 
 // Note - this function only draws cells that are in the list of
@@ -6179,9 +6142,18 @@ void wxGrid::GetTextBoxSize( const wxDC& dc,
     size_t i;
     for ( i = 0; i < lines.GetCount(); i++ )
     {
-        dc.GetTextExtent( lines[i], &lineW, &lineH );
-        w = wxMax( w, lineW );
-        h += lineH;
+        if ( lines[i].empty() )
+        {
+            // GetTextExtent() would return 0 for empty lines, but we still
+            // need to account for their height.
+            h += dc.GetCharHeight();
+        }
+        else
+        {
+            dc.GetTextExtent( lines[i], &lineW, &lineH );
+            w = wxMax( w, lineW );
+            h += lineH;
+        }
     }
 
     *width = w;
@@ -6399,7 +6371,7 @@ void wxGrid::ShowCellEditControl()
             // resize editor to overflow into righthand cells if allowed
             int maxWidth = rect.width;
             wxString value = GetCellValue(row, col);
-            if ( (value != wxEmptyString) && (attr->GetOverflow()) )
+            if ( !value.empty() && attr->GetOverflow() )
             {
                 int y;
                 GetTextExtent(value, &maxWidth, &y, NULL, NULL, &attr->GetFont());
@@ -7984,12 +7956,18 @@ void wxGrid::RegisterDataType(const wxString& typeName,
 
 wxGridCellEditor * wxGrid::GetDefaultEditorForCell(int row, int col) const
 {
+    if ( !m_table )
+        return NULL;
+
     wxString typeName = m_table->GetTypeName(row, col);
     return GetDefaultEditorForType(typeName);
 }
 
 wxGridCellRenderer * wxGrid::GetDefaultRendererForCell(int row, int col) const
 {
+    if ( !m_table )
+        return NULL;
+
     wxString typeName = m_table->GetTypeName(row, col);
     return GetDefaultRendererForType(typeName);
 }

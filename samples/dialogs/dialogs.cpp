@@ -32,7 +32,12 @@
 #include "wx/minifram.h"
 #include "wx/sysopt.h"
 #include "wx/notifmsg.h"
+#include "wx/generic/notifmsg.h"
 #include "wx/modalhook.h"
+
+#if defined(__WXMSW__) && wxUSE_TASKBARICON
+#include "wx/taskbar.h"
+#endif
 
 #if wxUSE_RICHMSGDLG
     #include "wx/richmsgdlg.h"
@@ -228,6 +233,9 @@ wxBEGIN_EVENT_TABLE(MyFrame, wxFrame)
 
 #if wxUSE_PROGRESSDLG
     EVT_MENU(DIALOGS_PROGRESS,                      MyFrame::ShowProgress)
+#ifdef wxHAS_NATIVE_PROGRESSDIALOG
+    EVT_MENU(DIALOGS_PROGRESS_GENERIC,              MyFrame::ShowProgressGeneric)
+#endif // wxHAS_NATIVE_PROGRESSDIALOG
 #endif // wxUSE_PROGRESSDLG
 
     EVT_MENU(DIALOGS_APP_PROGRESS,                  MyFrame::ShowAppProgress)
@@ -267,9 +275,7 @@ wxBEGIN_EVENT_TABLE(MyFrame, wxFrame)
 
     EVT_MENU(DIALOGS_REQUEST,                       MyFrame::OnRequestUserAttention)
 #if wxUSE_NOTIFICATION_MESSAGE
-    EVT_MENU(DIALOGS_NOTIFY_AUTO,                   MyFrame::OnNotifMsgAuto)
-    EVT_MENU(DIALOGS_NOTIFY_SHOW,                   MyFrame::OnNotifMsgShow)
-    EVT_MENU(DIALOGS_NOTIFY_HIDE,                   MyFrame::OnNotifMsgHide)
+    EVT_MENU(DIALOGS_NOTIFY_MSG,                    MyFrame::OnNotifMsg)
 #endif // wxUSE_NOTIFICATION_MESSAGE
 
 #if wxUSE_RICHTOOLTIP
@@ -346,7 +352,25 @@ bool MyApp::OnInit()
                          );
         for ( int i = 0; i <= PROGRESS_COUNT; i++ )
         {
-            if ( !dlg.Update(i) )
+            wxString msg;
+            switch ( i )
+            {
+                case 15:
+                    msg = "And the same dialog but with a very, very, very long"
+                          " message, just to test how it appears in this case.";
+                    break;
+
+                case 30:
+                    msg = "Back to brevity";
+                    break;
+
+                case 80:
+                    msg = "Back and adjusted";
+                    dlg.Fit();
+                    break;
+            }
+
+            if ( !dlg.Update(i, msg) )
                 break;
 
             wxMilliSleep(50);
@@ -487,6 +511,10 @@ bool MyApp::OnInit()
 
     #if wxUSE_PROGRESSDLG
         info_menu->Append(DIALOGS_PROGRESS, wxT("Pro&gress dialog\tCtrl-G"));
+        #ifdef wxHAS_NATIVE_PROGRESSDIALOG
+            info_menu->Append(DIALOGS_PROGRESS_GENERIC,
+                              wxT("Generic progress dialog\tCtrl-Alt-G"));
+        #endif // wxHAS_NATIVE_PROGRESSDIALOG
     #endif // wxUSE_PROGRESSDLG
 
         info_menu->Append(DIALOGS_APP_PROGRESS, wxT("&App progress\tShift-Ctrl-G"));
@@ -553,9 +581,8 @@ bool MyApp::OnInit()
     wxMenu *menuNotif = new wxMenu;
     menuNotif->Append(DIALOGS_REQUEST, wxT("&Request user attention\tCtrl-Shift-R"));
 #if wxUSE_NOTIFICATION_MESSAGE
-    menuNotif->Append(DIALOGS_NOTIFY_AUTO, "&Automatically hidden notification");
-    menuNotif->Append(DIALOGS_NOTIFY_SHOW, "&Show manual notification");
-    menuNotif->Append(DIALOGS_NOTIFY_HIDE, "&Hide manual notification");
+    menuNotif->AppendSeparator();
+    menuNotif->Append(DIALOGS_NOTIFY_MSG, "User &Notification\tCtrl-Shift-N");
 #endif // wxUSE_NOTIFICATION_MESSAGE
     menuDlg->AppendSubMenu(menuNotif, "&User notifications");
 
@@ -632,10 +659,6 @@ MyFrame::MyFrame(const wxString& title)
     }
 #endif // wxUSE_COLOURDLG
 
-#if wxUSE_NOTIFICATION_MESSAGE
-    m_notifMsg = NULL;
-#endif // wxUSE_NOTIFICATION_MESSAGE
-
 #if wxUSE_STATUSBAR
     CreateStatusBar();
 #endif // wxUSE_STATUSBAR
@@ -653,10 +676,8 @@ MyFrame::MyFrame(const wxString& title)
     m_infoBarAdvanced->AddButton(wxID_UNDO);
     m_infoBarAdvanced->AddButton(wxID_REDO);
 
-    m_infoBarAdvanced->Connect(wxID_REDO, wxEVT_BUTTON,
-                                wxCommandEventHandler(MyFrame::OnInfoBarRedo),
-                                NULL,
-                                this);
+    m_infoBarAdvanced->Bind(wxEVT_BUTTON, &MyFrame::OnInfoBarRedo, this,
+                            wxID_REDO);
 
     // adding and removing a button immediately doesn't make sense here, of
     // course, it's done just to show that it is possible
@@ -665,6 +686,7 @@ MyFrame::MyFrame(const wxString& title)
 
     // ... changing the colours and/or fonts
     m_infoBarAdvanced->SetOwnBackgroundColour(0xc8ffff);
+    m_infoBarAdvanced->SetForegroundColour(0x123312);
     m_infoBarAdvanced->SetFont(GetFont().Bold().Larger());
 
     // ... and changing the effect (only does anything under MSW currently)
@@ -700,17 +722,14 @@ MyFrame::MyFrame(const wxString& title)
         static const int DIALOGS_SYSTEM_ABOUT = 0x4010;
 
         menu->Append(DIALOGS_SYSTEM_ABOUT, "&About");
-        Connect(DIALOGS_SYSTEM_ABOUT, wxEVT_MENU,
-                wxCommandEventHandler(MyFrame::ShowSimpleAboutDialog));
+        Bind(wxEVT_MENU, &MyFrame::ShowSimpleAboutDialog, this,
+             DIALOGS_SYSTEM_ABOUT);
     }
 #endif // __WXMSW__
 }
 
 MyFrame::~MyFrame()
 {
-#if wxUSE_NOTIFICATION_MESSAGE
-    delete m_notifMsg;
-#endif // wxUSE_NOTIFICATION_MESSAGE
 }
 
 #if wxUSE_COLOURDLG
@@ -946,7 +965,8 @@ void MyFrame::MessageBoxWindowModal(wxCommandEvent& WXUNUSED(event))
                  "so the default \"Yes\"/\"No\"/\"Cancel\" buttons are used.";
     }
     dialog->SetExtendedMessage(extmsg);
-    dialog->Connect( wxEVT_WINDOW_MODAL_DIALOG_CLOSED, wxWindowModalDialogEventHandler(MyFrame::MessageBoxWindowModalClosed), NULL, this );
+    dialog->Bind(wxEVT_WINDOW_MODAL_DIALOG_CLOSED,
+                 &MyFrame::MessageBoxWindowModalClosed, this);
     dialog->ShowWindowModal();
 }
 
@@ -1373,7 +1393,7 @@ void MyFrame::AddRemove(wxCommandEvent& WXUNUSED(event))
     class ListBoxAdaptor : public wxAddRemoveAdaptor
     {
     public:
-        wxEXPLICIT ListBoxAdaptor(wxListBox* lbox)
+        explicit ListBoxAdaptor(wxListBox* lbox)
             : m_lbox(lbox)
         {
         }
@@ -1493,12 +1513,9 @@ MyExtraPanel::MyExtraPanel(wxWindow *parent)
     m_btn = new wxButton(this, -1, wxT("Custom Button"));
     m_btn->Enable(false);
     m_cb = new wxCheckBox(this, -1, wxT("Enable Custom Button"));
-    m_cb->Connect(wxEVT_CHECKBOX,
-                  wxCommandEventHandler(MyExtraPanel::OnCheckBox), NULL, this);
+    m_cb->Bind(wxEVT_CHECKBOX, &MyExtraPanel::OnCheckBox, this);
     m_label = new wxStaticText(this, wxID_ANY, "Nothing selected");
-    m_label->Connect(wxEVT_UPDATE_UI,
-                     wxUpdateUIEventHandler(MyExtraPanel::OnUpdateLabelUI),
-                     NULL, this);
+    m_label->Bind(wxEVT_UPDATE_UI, &MyExtraPanel::OnUpdateLabelUI, this);
 
     m_text = new wxTextCtrl(this, -1, m_str,
                             wxDefaultPosition, wxSize(40*GetCharWidth(), -1));
@@ -1900,53 +1917,410 @@ void MyFrame::OnRequestUserAttention(wxCommandEvent& WXUNUSED(event))
     RequestUserAttention(wxUSER_ATTENTION_ERROR);
 }
 
+#if wxUSE_RICHTOOLTIP || wxUSE_NOTIFICATION_MESSAGE
+
+#include "tip.xpm"
+
+#endif
+
 #if wxUSE_NOTIFICATION_MESSAGE
 
-void MyFrame::OnNotifMsgAuto(wxCommandEvent& WXUNUSED(event))
+// ----------------------------------------------------------------------------
+// TestNotificationMessageDialog
+// ----------------------------------------------------------------------------
+
+class TestNotificationMessageWindow : public wxFrame
 {
-    // Notice that the notification remains shown even after the
-    // wxNotificationMessage object itself is destroyed so we can show simple
-    // notifications using temporary objects.
-    if ( !wxNotificationMessage
-          (
-            "Automatic Notification",
-            "Nothing important has happened\n"
-            "this notification will disappear soon."
-          ).Show() )
+public:
+    TestNotificationMessageWindow(wxWindow *parent) :
+        wxFrame(parent, wxID_ANY, "User Notification Test Dialog")
     {
-        wxLogStatus("Failed to show notification message");
+#ifdef __WXMSW__
+        SetBackgroundColour(wxSystemSettings::GetColour(wxSYS_COLOUR_BTNFACE));
+#endif
+        wxSizer * const sizerTop = new wxBoxSizer(wxVERTICAL);
+
+        wxSizer* sizerText = new wxStaticBoxSizer(wxVERTICAL, this, "Notification Texts");
+
+        sizerText->Add(new wxStaticText(this, wxID_ANY, "&Title:"),
+            wxSizerFlags());
+        m_textTitle = new wxTextCtrl(this, wxID_ANY, "Notification Title");
+        sizerText->Add(m_textTitle, wxSizerFlags().Expand());
+
+        sizerText->Add(new wxStaticText(this, wxID_ANY, "&Message:"),
+            wxSizerFlags());
+        m_textMessage = new wxTextCtrl(this, wxID_ANY, "A message within the notification",
+            wxDefaultPosition, wxDefaultSize, wxTE_MULTILINE);
+        m_textMessage->SetMinSize(wxSize(300, -1));
+        sizerText->Add(m_textMessage, wxSizerFlags().Expand());
+
+        sizerTop->Add(sizerText, wxSizerFlags().Expand().Border());
+
+        const wxString icons[] =
+        {
+            "De&fault",
+            "None",
+            "&Information",
+            "&Warning",
+            "&Error",
+            "&Custom"
+        };
+        wxCOMPILE_TIME_ASSERT(WXSIZEOF(icons) == Icon_Max, IconMismatch);
+        m_icons = new wxRadioBox(this, wxID_ANY, "Ic&on in notification",
+            wxDefaultPosition, wxDefaultSize,
+            WXSIZEOF(icons), icons,
+            1, wxRA_SPECIFY_ROWS);
+        m_icons->SetSelection(Icon_Default);
+        sizerTop->Add(m_icons, wxSizerFlags().Expand().Border());
+
+        const wxString timeouts[] =
+        {
+            "&Automatic",
+            "&Never",
+            "&5 sec",
+            "&15 sec"
+        };
+        m_showTimeout = new wxRadioBox(this, wxID_ANY, "&Timeout for notification",
+            wxDefaultPosition, wxDefaultSize,
+            WXSIZEOF(timeouts), timeouts,
+            1, wxRA_SPECIFY_ROWS);
+        m_showTimeout->SetSelection(0);
+        sizerTop->Add(m_showTimeout, wxSizerFlags().Expand().Border());
+
+        wxSizer* sizerActions = new wxStaticBoxSizer(wxVERTICAL, this, "Additional Actions");
+
+        m_actionList = new wxListBox(this, wxID_ANY);
+        sizerActions->Add(m_actionList, wxSizerFlags().Expand());
+
+        wxSizer* sizerActionMod = new wxBoxSizer(wxHORIZONTAL);
+        sizerActionMod->Add(new wxStaticText(this, wxID_ANY, "ID:"), wxSizerFlags().Center());
+        const wxString actionIds[] =
+        {
+            "wxID_DELETE",
+            "wxID_CLOSE",
+            "wxID_OK",
+            "wxID_CANCEL"
+        };
+        m_actionChoice = new wxChoice(this, wxID_ANY,
+            wxDefaultPosition, wxDefaultSize,
+            WXSIZEOF(actionIds), actionIds
+            );
+        m_actionChoice->SetSelection(0);
+        sizerActionMod->Add(m_actionChoice);
+        sizerActionMod->Add(new wxStaticText(this, wxID_ANY, "Custom label:"), wxSizerFlags().Center());
+        m_actionCaption = new wxTextCtrl(this, wxID_ANY);
+        sizerActionMod->Add(m_actionCaption);
+        wxButton* actionAddBtn = new wxButton(this, wxID_ADD);
+        actionAddBtn->Bind(wxEVT_BUTTON, &TestNotificationMessageWindow::OnActionAddClicked, this);
+        sizerActionMod->Add(actionAddBtn);
+        wxButton* actionRemoveBtn = new wxButton(this, wxID_REMOVE);
+        actionRemoveBtn->Bind(wxEVT_BUTTON, &TestNotificationMessageWindow::OnActionRemoveClicked, this);
+        sizerActionMod->Add(actionRemoveBtn);
+
+        sizerActions->Add(sizerActionMod, wxSizerFlags().Border());
+
+        sizerTop->Add(sizerActions, wxSizerFlags().Expand().Border());
+
+        wxSizer* sizerSettings = new wxStaticBoxSizer(wxVERTICAL, this, "Notification Settings");
+
+#ifdef wxHAS_NATIVE_NOTIFICATION_MESSAGE
+        m_useGeneric = new wxCheckBox(this, wxID_ANY, "Use &generic notifications");
+        sizerSettings->Add(m_useGeneric);
+#endif
+
+        m_delayShow = new wxCheckBox(this, wxID_ANY, "&Delay show");
+#if defined(__WXOSX__)
+        m_delayShow->SetValue(true);
+#endif
+        sizerSettings->Add(m_delayShow);
+
+        m_handleEvents = new wxCheckBox(this, wxID_ANY, "&Handle events");
+        m_handleEvents->SetValue(true);
+        sizerSettings->Add(m_handleEvents);
+
+#if defined(__WXMSW__) && wxUSE_TASKBARICON
+        m_taskbarIcon = NULL;
+        m_useTaskbar = new wxCheckBox(this, wxID_ANY, "Use persistent &taskbar icon");
+        m_useTaskbar->SetValue(false);
+        sizerSettings->Add(m_useTaskbar);
+#endif
+
+        sizerTop->Add(sizerSettings, wxSizerFlags().Expand().Border());
+
+        m_textStatus = new wxStaticText(this, wxID_ANY, "", wxDefaultPosition, wxDefaultSize,
+            wxST_NO_AUTORESIZE | wxALIGN_CENTRE_HORIZONTAL);
+        m_textStatus->SetForegroundColour(*wxBLUE);
+        sizerTop->Add(m_textStatus, wxSizerFlags().Expand().Border());
+
+        wxSizer* sizerButtons = new wxBoxSizer(wxHORIZONTAL);
+        sizerButtons->Add(new wxButton(this, wxID_NEW, "&Show"));
+        m_closeButton = new wxButton(this, wxID_CLOSE, "&Close");
+        m_closeButton->Disable();
+        sizerButtons->Add(m_closeButton);
+        sizerTop->Add(sizerButtons, wxSizerFlags().Center());
+
+        SetSizerAndFit(sizerTop);
+
+        Center();
+
+        Bind(wxEVT_BUTTON, &TestNotificationMessageWindow::OnShowClicked, this, wxID_NEW);
+        Bind(wxEVT_BUTTON, &TestNotificationMessageWindow::OnCloseClicked, this, wxID_CLOSE);
     }
 
-    // But it doesn't have to be a temporary, of course.
-    wxNotificationMessage n("Dummy Warning", "Example of a warning notification.");
-    n.SetFlags(wxICON_ERROR);
-    n.Show(5); // Just for testing, use 5 second delay.
-}
+private:
+    enum
+    {
+        Icon_Default,
+        Icon_None,
+        Icon_Info,
+        Icon_Warning,
+        Icon_Error,
+        Icon_Custom,
+        Icon_Max
+    };
 
-void MyFrame::OnNotifMsgShow(wxCommandEvent& WXUNUSED(event))
+    class ActionInfo : public wxClientData
+    {
+    public:
+        ActionInfo(wxWindowID actionId, const wxString& actionCaption):
+            id(actionId),
+            customCaption(actionCaption)
+        {
+
+        }
+
+        wxWindowID id;
+        wxString customCaption;
+    };
+
+    wxTextCtrl* m_textTitle;
+    wxTextCtrl* m_textMessage;
+    wxRadioBox* m_icons;
+    wxRadioBox* m_showTimeout;
+    wxListBox* m_actionList;
+    wxChoice* m_actionChoice;
+    wxTextCtrl* m_actionCaption;
+#ifdef wxHAS_NATIVE_NOTIFICATION_MESSAGE
+    wxCheckBox* m_useGeneric;
+#endif
+    wxCheckBox* m_delayShow;
+    wxCheckBox* m_handleEvents;
+    wxStaticText* m_textStatus;
+    wxButton* m_closeButton;
+
+#if defined(__WXMSW__) && wxUSE_TASKBARICON
+    wxCheckBox* m_useTaskbar;
+    wxTaskBarIcon* m_taskbarIcon;
+#endif
+
+    wxSharedPtr< wxNotificationMessageBase> m_notif;
+
+    void DoShowNotification()
+    {
+        if ( m_delayShow->GetValue() )
+        {
+            ShowStatus("Sleeping for 3 seconds to allow you to switch to another window");
+            wxYield();
+            wxSleep(3);
+        }
+
+        m_closeButton->Enable();
+        ShowStatus("Showing notification...");
+#ifdef wxHAS_NATIVE_NOTIFICATION_MESSAGE
+        if ( m_useGeneric->GetValue() )
+            m_notif = new wxGenericNotificationMessage(
+                m_textTitle->GetValue(),
+                m_textMessage->GetValue(),
+                this);
+        else
+#endif
+        {
+            m_notif = new wxNotificationMessage(
+                m_textTitle->GetValue(),
+                m_textMessage->GetValue(),
+                this);
+
+#if defined(__WXMSW__) && wxUSE_TASKBARICON
+            if ( m_useTaskbar->GetValue() )
+            {
+                if ( !m_taskbarIcon )
+                {
+                    m_taskbarIcon = new wxTaskBarIcon();
+                    m_taskbarIcon->SetIcon(reinterpret_cast<wxTopLevelWindow*>(GetParent())->GetIcon(), 
+                        "Dialogs Sample (Persistent)");
+                }
+                wxNotificationMessage::UseTaskBarIcon(m_taskbarIcon);
+            }
+            else
+            if ( m_taskbarIcon )
+            {
+                wxNotificationMessage::UseTaskBarIcon(NULL);
+                delete m_taskbarIcon;
+                m_taskbarIcon = NULL;
+            }
+#endif
+        }
+
+        switch (m_icons->GetSelection())
+        {
+            case Icon_Default:
+                // Don't call SetFlags or SetIcon to see the implementations default
+                break;
+            case Icon_None:
+                m_notif->SetFlags(0);
+                break;
+            case Icon_Info:
+                m_notif->SetFlags(wxICON_INFORMATION);
+                break;
+            case Icon_Warning:
+                m_notif->SetFlags(wxICON_WARNING);
+                break;
+            case Icon_Error:
+                m_notif->SetFlags(wxICON_ERROR);
+                break;
+            case Icon_Custom:
+                m_notif->SetIcon(tip_xpm);
+                break;
+        }
+
+        int timeout;
+        switch (m_showTimeout->GetSelection())
+        {
+            case 1:
+                timeout = wxNotificationMessage::Timeout_Never;
+                break;
+            case 2:
+                timeout = 5;
+                break;
+            case 3:
+                timeout = 10;
+                break;
+            default:
+                timeout = wxNotificationMessage::Timeout_Auto;
+                break;
+        }
+
+        for (unsigned int i = 0; i < m_actionList->GetCount(); i++)
+        {
+            ActionInfo* ai = reinterpret_cast<ActionInfo*>(m_actionList->GetClientObject(i));
+            if ( !m_notif->AddAction(ai->id, ai->customCaption) )
+                wxLogWarning("Could not add action: %s", m_actionList->GetString(i));
+        }
+
+        if ( m_handleEvents->GetValue() )
+        {
+            m_notif->Bind(wxEVT_NOTIFICATION_MESSAGE_ACTION, &TestNotificationMessageWindow::OnNotificationAction, this);
+            m_notif->Bind(wxEVT_NOTIFICATION_MESSAGE_CLICK, &TestNotificationMessageWindow::OnNotificationClicked, this);
+            m_notif->Bind(wxEVT_NOTIFICATION_MESSAGE_DISMISSED, &TestNotificationMessageWindow::OnNotificationDismissed, this);
+        }
+
+        m_notif->Show(timeout);
+
+        // Free the notification if we don't handle it's events
+        if ( !m_handleEvents->GetValue() )
+        {
+            // Notice that the notification remains shown even after the
+            // wxNotificationMessage object itself is destroyed so we can show simple
+            // notifications using temporary objects.
+            m_notif.reset();
+            ShowStatus("Showing notification, deleted object");
+        }
+    }
+
+    void OnShowClicked(wxCommandEvent& WXUNUSED(event))
+    {
+        DoShowNotification();
+    }
+
+    void OnCloseClicked(wxCommandEvent& WXUNUSED(event))
+    {
+        if ( m_notif )
+            m_notif->Close();
+    }
+
+    void OnActionAddClicked(wxCommandEvent& WXUNUSED(event))
+    {
+        wxWindowID actionId;
+        switch (m_actionChoice->GetSelection())
+        {
+            case 1:
+                actionId = wxID_CLOSE;
+                break;
+            case 2:
+                actionId = wxID_OK;
+                break;
+            case 3:
+                actionId = wxID_CANCEL;
+                break;
+            default:
+                actionId = wxID_DELETE;
+                break;
+        }
+
+        wxString actionCaption = m_actionCaption->GetValue();
+        wxString desc = m_actionChoice->GetStringSelection();
+        if ( !actionCaption.empty() )
+            desc += " (" + actionCaption + ")";
+        m_actionList->SetSelection( m_actionList->Append( desc, new ActionInfo(actionId, actionCaption) ) );
+    }
+
+    void OnActionRemoveClicked(wxCommandEvent& WXUNUSED(event))
+    {
+        int pos = m_actionList->GetSelection();
+        if ( pos != wxNOT_FOUND )
+        {
+            m_actionList->Delete(pos);
+            if ( pos > 0 && m_actionList->GetCount() > 0 )
+                m_actionList->SetSelection(pos - 1);
+        }
+        else
+            wxLogError("No action selected");
+    }
+
+    void OnNotificationClicked(wxCommandEvent& event)
+    {
+        ShowStatus("Notification was clicked");
+
+        Raise();
+
+        event.Skip();
+    }
+
+    void OnNotificationDismissed(wxCommandEvent& event)
+    {
+        ShowStatus("Notification was dismissed");
+
+        Raise();
+
+        event.Skip();
+    }
+
+    void OnNotificationAction(wxCommandEvent& event)
+    {
+        ShowStatus(wxString::Format("Selected %s action in notification", wxGetStockLabel(event.GetId(), 0)) );
+
+        event.Skip();
+    }
+
+    void ShowStatus(const wxString& text)
+    {
+        m_textStatus->SetLabelText(text);
+    }
+
+};
+
+void MyFrame::OnNotifMsg(wxCommandEvent& WXUNUSED(event))
 {
-    if ( !m_notifMsg )
+#ifdef __WXMSW__
+    // Try to enable toast notifications (available since Win8)
+    if ( !wxNotificationMessage::MSWUseToasts() )
     {
-        m_notifMsg = new wxNotificationMessage
-                         (
-                            "wxWidgets Manual Notification",
-                            "You can hide this notification from the menu",
-                            this
-                         );
+        wxLogDebug("Toast notifications not available.");
     }
+#endif
 
-    if ( !m_notifMsg->Show(wxNotificationMessage::Timeout_Never) )
-    {
-        wxLogStatus("Failed to show manual notification message");
-    }
-}
-
-void MyFrame::OnNotifMsgHide(wxCommandEvent& WXUNUSED(event))
-{
-    if ( m_notifMsg && !m_notifMsg->Close() )
-    {
-        wxLogStatus("Failed to hide manual notification message");
-    }
+    TestNotificationMessageWindow* dlg = new TestNotificationMessageWindow(this);
+    dlg->Show();
 }
 
 #endif // wxUSE_NOTIFICATION_MESSAGE
@@ -1954,8 +2328,6 @@ void MyFrame::OnNotifMsgHide(wxCommandEvent& WXUNUSED(event))
 #if wxUSE_RICHTOOLTIP
 
 #include "wx/richtooltip.h"
-
-#include "tip.xpm"
 
 class RichTipDialog : public wxDialog
 {
@@ -2041,21 +2413,8 @@ public:
 
 
         // And connect the event handlers.
-        btnShowText->Connect
-                     (
-                        wxEVT_BUTTON,
-                        wxCommandEventHandler(RichTipDialog::OnShowTipForText),
-                        NULL,
-                        this
-                     );
-
-        btnShowBtn->Connect
-                    (
-                        wxEVT_BUTTON,
-                        wxCommandEventHandler(RichTipDialog::OnShowTipForBtn),
-                        NULL,
-                        this
-                    );
+        btnShowText->Bind(wxEVT_BUTTON, &RichTipDialog::OnShowTipForText, this);
+        btnShowBtn->Bind(wxEVT_BUTTON, &RichTipDialog::OnShowTipForBtn, this);
     }
 
 private:
@@ -2225,7 +2584,7 @@ TestDefaultActionDialog::TestDefaultActionDialog( wxWindow *parent ) :
     main_sizer->Add( grid_sizer, 0, wxALL, 10 );
 
     wxSizer *button_sizer = CreateSeparatedButtonSizer( wxOK|wxCANCEL );
-    if (button_sizer)
+    if ( button_sizer )
         main_sizer->Add( button_sizer, 0, wxALL|wxGROW, 5 );
 
     SetSizerAndFit( main_sizer );
@@ -2253,7 +2612,14 @@ void TestDefaultActionDialog::OnCatchListBoxDClick(wxCommandEvent& WXUNUSED(even
 
 void TestDefaultActionDialog::OnTextEnter(wxCommandEvent& event)
 {
-    wxLogMessage("Text \"%s\" entered.", event.GetString());
+    const wxString& text = event.GetString();
+    if ( text.empty() )
+    {
+        event.Skip();
+        return;
+    }
+
+    wxLogMessage("Text \"%s\" entered.", text);
 }
 
 void MyFrame::OnTestDefaultActionDialog(wxCommandEvent& WXUNUSED(event))
@@ -2295,16 +2661,16 @@ void MyFrame::OnExit(wxCommandEvent& WXUNUSED(event) )
 
 #if wxUSE_PROGRESSDLG
 
+static const int max_ = 100;
+
 void MyFrame::ShowProgress( wxCommandEvent& WXUNUSED(event) )
 {
-    static const int max = 100;
-
     wxProgressDialog dialog("Progress dialog example",
                             // "Reserve" enough space for the multiline
                             // messages below, we'll change it anyhow
                             // immediately in the loop below
                             wxString(' ', 100) + "\n\n\n\n",
-                            max,    // range
+                            max_,    // range
                             this,   // parent
                             wxPD_CAN_ABORT |
                             wxPD_CAN_SKIP |
@@ -2316,16 +2682,40 @@ void MyFrame::ShowProgress( wxCommandEvent& WXUNUSED(event) )
                             wxPD_SMOOTH // - makes indeterminate mode bar on WinXP very small
                             );
 
+    DoShowProgress(dialog);
+}
+
+#ifdef wxHAS_NATIVE_PROGRESSDIALOG
+void MyFrame::ShowProgressGeneric( wxCommandEvent& WXUNUSED(event) )
+{
+    wxGenericProgressDialog dialog("Generic progress dialog example",
+                                   wxString(' ', 100) + "\n\n\n\n",
+                                   max_,
+                                   this,
+                                   wxPD_CAN_ABORT |
+                                   wxPD_CAN_SKIP |
+                                   wxPD_APP_MODAL |
+                                   wxPD_ELAPSED_TIME |
+                                   wxPD_ESTIMATED_TIME |
+                                   wxPD_REMAINING_TIME |
+                                   wxPD_SMOOTH);
+
+    DoShowProgress(dialog);
+}
+#endif // wxHAS_NATIVE_PROGRESSDIALOG
+
+void MyFrame::DoShowProgress(wxGenericProgressDialog& dialog)
+{
     bool cont = true;
-    for ( int i = 0; i <= max; i++ )
+    for ( int i = 0; i <= max_; i++ )
     {
         wxString msg;
 
         // test both modes of wxProgressDialog behaviour: start in
         // indeterminate mode but switch to the determinate one later
-        const bool determinate = i > max/2;
+        const bool determinate = i > max_/2;
 
-        if ( i == max )
+        if ( i == max_ )
         {
             msg = "That's all, folks!\n"
                   "\n"
@@ -2362,10 +2752,10 @@ void MyFrame::ShowProgress( wxCommandEvent& WXUNUSED(event) )
         // each skip will move progress about quarter forward
         if ( skip )
         {
-            i += max/4;
+            i += max_/4;
 
-            if ( i >= 100 )
-                i = 99;
+            if ( i >= max_ )
+                i = max_ - 1;
         }
 
         if ( !cont )
@@ -2379,7 +2769,7 @@ void MyFrame::ShowProgress( wxCommandEvent& WXUNUSED(event) )
             dialog.Resume();
         }
 
-        wxMilliSleep(200);
+        wxMilliSleep(100);
     }
 
     if ( !cont )
@@ -2388,7 +2778,7 @@ void MyFrame::ShowProgress( wxCommandEvent& WXUNUSED(event) )
     }
     else
     {
-        wxLogStatus(wxT("Countdown from %d finished"), max);
+        wxLogStatus(wxT("Countdown from %d finished"), max_);
     }
 }
 
@@ -2411,7 +2801,7 @@ void MyFrame::ShowAppProgress( wxCommandEvent& WXUNUSED(event) )
     {
         progress.SetValue(i);
 
-        wxMilliSleep(500);
+        wxMilliSleep(200);
     }
 
     wxLogStatus("Progress finished");
@@ -3218,11 +3608,8 @@ bool TestMessageBoxDialog::Create()
         m_labels[n] = new wxTextCtrl(this, wxID_ANY);
         sizerBtns->Add(m_labels[n], wxSizerFlags().Expand());
 
-        m_labels[n]->Connect(wxEVT_UPDATE_UI,
-                             wxUpdateUIEventHandler(
-                                 TestMessageBoxDialog::OnUpdateLabelUI),
-                             NULL,
-                             this);
+        m_labels[n]->Bind(wxEVT_UPDATE_UI,
+                          &TestMessageBoxDialog::OnUpdateLabelUI, this);
     }
 
     sizerBtnsBox->Add(sizerBtns, wxSizerFlags().Expand());
@@ -3257,11 +3644,8 @@ bool TestMessageBoxDialog::Create()
         sizerFlags = new wxStaticBoxSizer(wxHORIZONTAL, this, "&Other flags");
 
     m_chkNoDefault = new wxCheckBox(this, wxID_ANY, "Make \"No\" &default");
-    m_chkNoDefault->Connect(wxEVT_UPDATE_UI,
-                            wxUpdateUIEventHandler(
-                                TestMessageBoxDialog::OnUpdateNoDefaultUI),
-                            NULL,
-                            this);
+    m_chkNoDefault->Bind(wxEVT_UPDATE_UI,
+                         &TestMessageBoxDialog::OnUpdateNoDefaultUI, this);
     sizerFlags->Add(m_chkNoDefault, wxSizerFlags().Border());
 
     m_chkCentre = new wxCheckBox(this, wxID_ANY, "Centre on &parent");
@@ -3486,6 +3870,34 @@ void TestRichMessageDialog::AddAdditionalTextOptions(wxSizer *sizer)
                                     wxTE_MULTILINE);
     sizerMsgs->Add(m_textDetailed, wxSizerFlags().Expand());
 
+    // add option to show footer text
+    wxSizer * const sizerFooter = new wxBoxSizer(wxHORIZONTAL);
+    sizerFooter->Add(new wxStaticText(this, wxID_ANY, "&Footer Text:"),
+        wxSizerFlags().Centre().Border(wxRIGHT));
+    m_textFooter = new wxTextCtrl(this, wxID_ANY);
+    sizerFooter->Add(m_textFooter, wxSizerFlags(1).Centre());
+
+    // add option to select footer icon
+    const wxString icons[] =
+    {
+        "None",
+        "Info",
+        "Warning",
+        "Error",
+        "Auth needed"
+    };
+
+    sizerFooter->Add(new wxStaticText(this, wxID_ANY, "Icon:"),
+        wxSizerFlags().Centre().Border(wxLEFT));
+    m_iconsFooter = new wxChoice(this, wxID_ANY,
+        wxDefaultPosition, wxDefaultSize,
+        WXSIZEOF(icons), icons);
+    // Make the None the default:
+    m_iconsFooter->SetSelection(0);
+    sizerFooter->Add(m_iconsFooter, wxSizerFlags().Expand().Border());
+
+    sizerMsgs->Add(sizerFooter, wxSizerFlags().Expand().Border(wxTOP));
+
     sizer->Add(sizerMsgs, wxSizerFlags().Expand().Border());
 }
 
@@ -3506,6 +3918,25 @@ void TestRichMessageDialog::OnApply(wxCommandEvent& WXUNUSED(event))
     dlg.ShowCheckBox(m_textCheckBox->GetValue(),
                      m_initialValueCheckBox->GetValue());
     dlg.ShowDetailedText(m_textDetailed->GetValue());
+    dlg.SetFooterText(m_textFooter->GetValue());
+    switch ( m_iconsFooter->GetSelection() )
+    {
+        case 1:
+            dlg.SetFooterIcon(wxICON_INFORMATION);
+            break;
+
+        case 2:
+            dlg.SetFooterIcon(wxICON_WARNING);
+            break;
+
+        case 3:
+            dlg.SetFooterIcon(wxICON_ERROR);
+            break;
+
+        case 4:
+            dlg.SetFooterIcon(wxICON_AUTH_NEEDED);
+            break;
+    }
 
     ShowResult(dlg.ShowModal());
 }

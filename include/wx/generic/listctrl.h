@@ -72,7 +72,7 @@ public:
 
     bool GetItem( wxListItem& info ) const;
     bool SetItem( wxListItem& info ) ;
-    long SetItem( long index, int col, const wxString& label, int imageId = -1 );
+    bool SetItem( long index, int col, const wxString& label, int imageId = -1 );
     int  GetItemState( long item, long stateMask ) const;
     bool SetItemState( long item, long state, long stateMask);
     bool SetItemImage( long item, int image, int selImage = -1 );
@@ -101,8 +101,8 @@ public:
     void SetTextColour(const wxColour& col);
     long GetTopItem() const;
 
-    virtual bool HasCheckboxes() const wxOVERRIDE;
-    virtual bool EnableCheckboxes(bool enable = true) wxOVERRIDE;
+    virtual bool HasCheckBoxes() const wxOVERRIDE;
+    virtual bool EnableCheckBoxes(bool enable = true) wxOVERRIDE;
     virtual bool IsItemChecked(long item) const wxOVERRIDE;
     virtual void CheckItem(long item, bool check) wxOVERRIDE;
 
@@ -210,8 +210,6 @@ protected:
     // Implement base class pure virtual methods.
     long DoInsertColumn(long col, const wxListItem& info) wxOVERRIDE;
 
-
-    virtual bool DoPopupMenu( wxMenu *menu, int x, int y ) wxOVERRIDE;
 
     virtual wxSize DoGetBestClientSize() const wxOVERRIDE;
 

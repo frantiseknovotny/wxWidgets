@@ -120,20 +120,6 @@ wxGCDC::~wxGCDC()
 {
 }
 
-wxGraphicsContext* wxGCDC::GetGraphicsContext() const
-{
-    if (!m_pimpl) return NULL;
-    wxGCDCImpl *gc_impl = (wxGCDCImpl*) m_pimpl;
-    return gc_impl->GetGraphicsContext();
-}
-
-void wxGCDC::SetGraphicsContext( wxGraphicsContext* ctx )
-{
-    if (!m_pimpl) return;
-    wxGCDCImpl *gc_impl = (wxGCDCImpl*) m_pimpl;
-    gc_impl->SetGraphicsContext( ctx );
-}
-
 wxIMPLEMENT_ABSTRACT_CLASS(wxGCDCImpl, wxDCImpl);
 
 wxGCDCImpl::wxGCDCImpl( wxDC *owner ) :
@@ -204,6 +190,8 @@ void wxGCDCImpl::Init(wxGraphicsContext* ctx)
     m_pen = *wxBLACK_PEN;
     m_font = *wxNORMAL_FONT;
     m_brush = *wxWHITE_BRUSH;
+
+    m_isClipBoxValid = false;
 
     m_graphicContext = NULL;
     if (ctx)
@@ -289,13 +277,68 @@ void wxGCDCImpl::Flush()
     m_graphicContext->Flush();
 }
 
+void wxGCDCImpl::UpdateClipBox()
+{
+    double x, y, w, h;
+    m_graphicContext->GetClipBox(&x, &y, &w, &h);
+
+    // We shouldn't reset m_clipping if the clipping region that we set happens
+    // to be empty (e.g. because its intersection with the previous clipping
+    // region was empty), but we should set it to true if we do have a valid
+    // clipping region and it was false which may happen if the clipping region
+    // set from the outside of wxWidgets code.
+    if ( !m_clipping )
+    {
+        if ( w != 0. && h != 0. )
+            m_clipping = true;
+    }
+
+    m_clipX1 = wxRound(x);
+    m_clipY1 = wxRound(y);
+    m_clipX2 = wxRound(x+w);
+    m_clipY2 = wxRound(y+h);
+    m_isClipBoxValid = true;
+}
+
+bool wxGCDCImpl::DoGetClippingRect(wxRect& rect) const
+{
+    wxCHECK_MSG( IsOk(), false, wxS("wxGCDC::DoGetClippingRegion - invalid GC") );
+    // Check if we should retrieve the clipping region possibly not set
+    // by SetClippingRegion() but modified by application: this can
+    // happen when we're associated with an existing graphics context using
+    // SetGraphicsContext() or when wxGCDC logical coordinates are transformed
+    // with SetDeviceOrigin(), SetLogicalOrigin(), SetUserScale(), SetLogicalScale().
+    if ( !m_isClipBoxValid )
+    {
+        wxGCDCImpl *self = wxConstCast(this, wxGCDCImpl);
+        self->UpdateClipBox();
+    }
+
+    return wxDCImpl::DoGetClippingRect(rect);
+}
+
 void wxGCDCImpl::DoSetClippingRegion( wxCoord x, wxCoord y, wxCoord w, wxCoord h )
 {
     wxCHECK_RET( IsOk(), wxT("wxGCDC(cg)::DoSetClippingRegion - invalid DC") );
 
+    // Generally, renderers accept negative values of width/height
+    // but for internal calculations we need to have a box definition
+    // in the standard form, with (x,y) pointing to the top-left
+    // corner of the box and with non-negative width and height.
+    if ( w < 0 )
+    {
+        w = -w;
+        x -= (w - 1);
+    }
+    if ( h < 0 )
+    {
+        h = -h;
+        y -= (h - 1);
+    }
     m_graphicContext->Clip( x, y, w, h );
 
-    wxDCImpl::DoSetClippingRegion(x, y, w, h);
+    m_clipping = true;
+    UpdateClipBox();
 }
 
 void wxGCDCImpl::DoSetDeviceClippingRegion( const wxRegion &region )
@@ -303,35 +346,26 @@ void wxGCDCImpl::DoSetDeviceClippingRegion( const wxRegion &region )
     // region is in device coordinates
     wxCHECK_RET( IsOk(), wxT("wxGCDC(cg)::DoSetDeviceClippingRegion - invalid DC") );
 
-    if (region.Empty())
-    {
-        //DestroyClippingRegion();
-        return;
-    }
+    // Because graphics context works with logical coordinates
+    // and clipping region is given in device coordinates
+    // we need temporarily reset graphics context's coordinate system
+    // to the initial state in which logical and device coordinate
+    // systems are equivalent.
+    // So, at first save current transformation parameters.
+    wxGraphicsMatrix currTransform = m_graphicContext->GetTransform();
+    // Reset coordinate system with identity transformation matrix
+    // to make logical coordinates the same as device coordinates.
+    wxGraphicsMatrix m = m_graphicContext->CreateMatrix();
+    m_graphicContext->SetTransform(m);
 
-    wxRegion logRegion( region );
-    wxCoord x, y, w, h;
+    // Set clipping region
+    m_graphicContext->Clip(region);
 
-    logRegion.Offset( DeviceToLogicalX(0), DeviceToLogicalY(0) );
-    logRegion.GetBox( x, y, w, h );
+    // Restore original transformation settings.
+    m_graphicContext->SetTransform(currTransform);
 
-    m_graphicContext->Clip( logRegion );
-    if ( m_clipping )
-    {
-        m_clipX1 = wxMax( m_clipX1, x );
-        m_clipY1 = wxMax( m_clipY1, y );
-        m_clipX2 = wxMin( m_clipX2, (x + w) );
-        m_clipY2 = wxMin( m_clipY2, (y + h) );
-    }
-    else
-    {
-        m_clipping = true;
-
-        m_clipX1 = x;
-        m_clipY1 = y;
-        m_clipX2 = x + w;
-        m_clipY2 = y + h;
-    }
+    m_clipping = true;
+    UpdateClipBox();
 }
 
 void wxGCDCImpl::DestroyClippingRegion()
@@ -346,7 +380,8 @@ void wxGCDCImpl::DestroyClippingRegion()
     m_graphicContext->SetPen( m_pen );
     m_graphicContext->SetBrush( m_brush );
 
-    m_clipping = false;
+    wxDCImpl::DestroyClippingRegion();
+    m_isClipBoxValid = false;
 }
 
 void wxGCDCImpl::DoGetSizeMM( int* width, int* height ) const
@@ -406,7 +441,13 @@ void wxGCDCImpl::ComputeScaleAndOrigin()
         m_matrixCurrent.Scale( m_scaleX * m_signX, m_scaleY * m_signY );
 
         m_graphicContext->SetTransform( m_matrixOriginal );
+#if wxUSE_DC_TRANSFORM_MATRIX
+        // Concatenate extended transform (affine) with basic transform of coordinate system.
+        wxGraphicsMatrix mtxExt = m_graphicContext->CreateMatrix(m_matrixExtTransform);
+        m_matrixCurrent.Concat(mtxExt);
+#endif // wxUSE_DC_TRANSFORM_MATRIX
         m_graphicContext->ConcatTransform( m_matrixCurrent );
+        m_isClipBoxValid = false;
     }
 }
 
@@ -420,10 +461,12 @@ void* wxGCDCImpl::GetHandle() const
     return cgctx;
 }
 
+#if wxUSE_PALETTE
 void wxGCDCImpl::SetPalette( const wxPalette& WXUNUSED(palette) )
 {
 
 }
+#endif
 
 void wxGCDCImpl::SetBackgroundMode( int mode )
 {
@@ -478,6 +521,40 @@ void wxGCDCImpl::SetLogicalFunction( wxRasterOperationMode function )
     else
         m_graphicContext->SetAntialiasMode(wxANTIALIAS_DEFAULT);
 }
+
+// ----------------------------------------------------------------------------
+// Transform matrix
+// ----------------------------------------------------------------------------
+
+#if wxUSE_DC_TRANSFORM_MATRIX
+
+bool wxGCDCImpl::CanUseTransformMatrix() const
+{
+    return true;
+}
+
+bool wxGCDCImpl::SetTransformMatrix(const wxAffineMatrix2D &matrix)
+{
+    // Passed affine transform will be concatenated
+    // with current basic transform of the coordinate system.
+    m_matrixExtTransform = matrix;
+    ComputeScaleAndOrigin();
+    return true;
+}
+
+wxAffineMatrix2D wxGCDCImpl::GetTransformMatrix() const
+{
+    return m_matrixExtTransform;
+}
+
+void wxGCDCImpl::ResetTransformMatrix()
+{
+    // Reset affine transfrom matrix (extended) to identity matrix.
+    m_matrixExtTransform.Set(wxMatrix2D(), wxPoint2DDouble());
+    ComputeScaleAndOrigin();
+}
+
+#endif // wxUSE_DC_TRANSFORM_MATRIX
 
 bool wxGCDCImpl::DoFloodFill(wxCoord WXUNUSED(x), wxCoord WXUNUSED(y),
                              const wxColour& WXUNUSED(col),
@@ -632,7 +709,31 @@ void wxGCDCImpl::DoDrawPoint( wxCoord x, wxCoord y )
 {
     wxCHECK_RET( IsOk(), wxT("wxGCDC(cg)::DoDrawPoint - invalid DC") );
 
-    DoDrawLine( x , y , x + 1 , y + 1 );
+    if (!m_logicalFunctionSupported)
+        return;
+
+#if defined(__WXMSW__) && wxUSE_GRAPHICS_GDIPLUS
+    // single point path does not work with GDI+
+    if (m_graphicContext->GetRenderer() == wxGraphicsRenderer::GetGDIPlusRenderer())
+    {
+        const double dx = 0.25 / m_scaleX;
+        const double dy = 0.25 / m_scaleY;
+        m_graphicContext->StrokeLine(x - dx, y - dy, x + dx, y + dy);
+    }
+    else
+#endif
+    {
+#ifdef __WXOSX__
+        m_graphicContext->StrokeLine(x, y, x, y);
+#else
+        wxGraphicsPath path(m_graphicContext->CreatePath());
+        path.MoveToPoint(x, y);
+        path.CloseSubpath();
+        m_graphicContext->StrokePath(path);
+#endif
+    }
+
+    CalcBoundingBox(x, y);
 }
 
 void wxGCDCImpl::DoDrawLines(int n, const wxPoint points[],
@@ -1144,19 +1245,29 @@ wxCoord wxGCDCImpl::GetCharHeight(void) const
 void wxGCDCImpl::Clear(void)
 {
     wxCHECK_RET( IsOk(), wxT("wxGCDC(cg)::Clear - invalid DC") );
-    // TODO better implementation / incorporate size info into wxGCDC or context
-    m_graphicContext->SetBrush( m_backgroundBrush );
-    wxPen p = *wxTRANSPARENT_PEN;
-    m_graphicContext->SetPen( p );
-    wxCompositionMode formerMode = m_graphicContext->GetCompositionMode();
-    m_graphicContext->SetCompositionMode(wxCOMPOSITION_SOURCE);
-    // maximum positive coordinate Cairo can handle is 2^23 - 1
-    DoDrawRectangle(
-        DeviceToLogicalX(0), DeviceToLogicalY(0),
-        DeviceToLogicalXRel(0x007fffff), DeviceToLogicalYRel(0x007fffff));
-    m_graphicContext->SetCompositionMode(formerMode);
-    m_graphicContext->SetPen( m_pen );
-    m_graphicContext->SetBrush( m_brush );
+    
+    if ( m_backgroundBrush.IsOk() )
+    {
+        m_graphicContext->SetBrush( m_backgroundBrush );
+        wxPen p = *wxTRANSPARENT_PEN;
+        m_graphicContext->SetPen( p );
+        wxCompositionMode formerMode = m_graphicContext->GetCompositionMode();
+        m_graphicContext->SetCompositionMode(wxCOMPOSITION_SOURCE);
+
+        double x, y, w, h;
+        m_graphicContext->GetClipBox(&x, &y, &w, &h);
+        m_graphicContext->DrawRectangle(x, y, w, h);
+
+        m_graphicContext->SetCompositionMode(formerMode);
+        m_graphicContext->SetPen( m_pen );
+        m_graphicContext->SetBrush( m_brush );
+    }
+    else
+    {
+        double x, y, w, h;
+        m_graphicContext->GetClipBox(&x, &y, &w, &h);
+        m_graphicContext->ClearRectangle(x, y, w, h);
+    }
 }
 
 void wxGCDCImpl::DoGetSize(int *width, int *height) const
@@ -1258,12 +1369,11 @@ void wxGCDCImpl::DoDrawCheckMark(wxCoord x, wxCoord y,
 #ifdef __WXMSW__
 wxRect wxGCDCImpl::MSWApplyGDIPlusTransform(const wxRect& r) const
 {
-    wxGraphicsContext* const gc = GetGraphicsContext();
-    wxCHECK_MSG( gc, r, wxT("Invalid wxGCDC") );
+    wxCHECK_MSG( IsOk(), r, wxS("Invalid wxGCDC") );
 
     double x = 0,
            y = 0;
-    gc->GetTransform().TransformPoint(&x, &y);
+    m_graphicContext->GetTransform().TransformPoint(&x, &y);
 
     wxRect rect(r);
     rect.Offset(x, y);

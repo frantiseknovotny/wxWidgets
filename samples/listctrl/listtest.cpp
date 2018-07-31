@@ -41,6 +41,7 @@
 #include "wx/timer.h"           // for wxStopWatch
 #include "wx/colordlg.h"        // for wxGetColourFromUser
 #include "wx/settings.h"
+#include "wx/sizer.h"
 #include "wx/sysopt.h"
 #include "wx/numdlg.h"
 
@@ -109,8 +110,6 @@ bool MyApp::OnInit()
 // ----------------------------------------------------------------------------
 
 wxBEGIN_EVENT_TABLE(MyFrame, wxFrame)
-    EVT_SIZE(MyFrame::OnSize)
-
     EVT_MENU(LIST_QUIT, MyFrame::OnQuit)
     EVT_MENU(LIST_ABOUT, MyFrame::OnAbout)
     EVT_MENU(LIST_LIST_VIEW, MyFrame::OnListView)
@@ -137,6 +136,7 @@ wxBEGIN_EVENT_TABLE(MyFrame, wxFrame)
     EVT_MENU(LIST_SET_FG_COL, MyFrame::OnSetFgColour)
     EVT_MENU(LIST_SET_BG_COL, MyFrame::OnSetBgColour)
     EVT_MENU(LIST_ROW_LINES, MyFrame::OnSetRowLines)
+    EVT_MENU(LIST_CUSTOM_HEADER_ATTR, MyFrame::OnCustomHeaderAttr)
     EVT_MENU(LIST_TOGGLE_MULTI_SEL, MyFrame::OnToggleMultiSel)
     EVT_MENU(LIST_SHOW_COL_INFO, MyFrame::OnShowColInfo)
     EVT_MENU(LIST_SHOW_SEL_INFO, MyFrame::OnShowSelInfo)
@@ -154,15 +154,16 @@ wxBEGIN_EVENT_TABLE(MyFrame, wxFrame)
     EVT_MENU(LIST_MAC_USE_GENERIC, MyFrame::OnToggleMacUseGeneric)
 #endif // __WXOSX__
     EVT_MENU(LIST_FIND, MyFrame::OnFind)
-    EVT_MENU(LIST_TOGGLE_CHECKBOX, MyFrame::OnToggleItemCheckbox)
-    EVT_MENU(LIST_GET_CHECKBOX, MyFrame::OnGetItemCheckbox)
-    EVT_MENU(LIST_TOGGLE_CHECKBOXES, MyFrame::OnToggleCheckboxes)
+    EVT_MENU(LIST_TOGGLE_CHECKBOX, MyFrame::OnToggleItemCheckBox)
+    EVT_MENU(LIST_GET_CHECKBOX, MyFrame::OnGetItemCheckBox)
+    EVT_MENU(LIST_TOGGLE_CHECKBOXES, MyFrame::OnToggleCheckBoxes)
 
     EVT_UPDATE_UI(LIST_SHOW_COL_INFO, MyFrame::OnUpdateUIEnableInReport)
     EVT_UPDATE_UI(LIST_TOGGLE_HEADER, MyFrame::OnUpdateUIEnableInReport)
+    EVT_UPDATE_UI(LIST_CUSTOM_HEADER_ATTR, MyFrame::OnUpdateUIEnableInReport)
 
     EVT_UPDATE_UI(LIST_TOGGLE_MULTI_SEL, MyFrame::OnUpdateToggleMultiSel)
-    EVT_UPDATE_UI(LIST_TOGGLE_CHECKBOXES, MyFrame::OnUpdateToggleCheckboxes)
+    EVT_UPDATE_UI(LIST_TOGGLE_CHECKBOXES, MyFrame::OnUpdateToggleCheckBoxes)
     EVT_UPDATE_UI(LIST_TOGGLE_HEADER, MyFrame::OnUpdateToggleHeader)
     EVT_UPDATE_UI(LIST_ROW_LINES, MyFrame::OnUpdateRowLines)
 wxEND_EVENT_TABLE()
@@ -276,6 +277,7 @@ MyFrame::MyFrame(const wxChar *title)
     menuCol->Append(LIST_SET_FG_COL, wxT("&Foreground colour..."));
     menuCol->Append(LIST_SET_BG_COL, wxT("&Background colour..."));
     menuCol->AppendCheckItem(LIST_ROW_LINES, wxT("Alternating colours"));
+    menuCol->AppendCheckItem(LIST_CUSTOM_HEADER_ATTR, "&Custom header attributes");
 
     wxMenuBar *menubar = new wxMenuBar;
     menubar->Append(menuFile, wxT("&File"));
@@ -302,6 +304,13 @@ MyFrame::MyFrame(const wxChar *title)
 #if wxUSE_STATUSBAR
     CreateStatusBar();
 #endif // wxUSE_STATUSBAR
+
+    wxBoxSizer* const sizer = new wxBoxSizer(wxVERTICAL);
+    sizer->Add(m_listCtrl, wxSizerFlags(2).Expand().Border());
+    sizer->Add(m_logWindow, wxSizerFlags(1).Expand().Border());
+    m_panel->SetSizer(sizer);
+
+    SetClientSize(m_panel->GetBestSize());
 }
 
 MyFrame::~MyFrame()
@@ -310,24 +319,6 @@ MyFrame::~MyFrame()
 
     delete m_imageListNormal;
     delete m_imageListSmall;
-}
-
-void MyFrame::OnSize(wxSizeEvent& event)
-{
-    DoSize();
-
-    event.Skip();
-}
-
-void MyFrame::DoSize()
-{
-    if ( !m_logWindow )
-        return;
-
-    wxSize size = GetClientSize();
-    wxCoord y = (2*size.y)/3;
-    m_listCtrl->SetSize(0, 0, size.x, y);
-    m_logWindow->SetSize(0, y + 1, size.x, size.y - y -1);
 }
 
 bool MyFrame::CheckNonVirtual() const
@@ -456,12 +447,22 @@ void MyFrame::RecreateList(long flags, bool withText)
             (m_listCtrl->GetWindowStyleFlag() & wxLC_VIRTUAL)) )
 #endif
     {
-        delete m_listCtrl;
+        wxListCtrl* const old = m_listCtrl;
 
         m_listCtrl = new MyListCtrl(m_panel, LIST_CTRL,
                                     wxDefaultPosition, wxDefaultSize,
                                     flags |
                                     wxBORDER_THEME | wxLC_EDIT_LABELS);
+
+        if ( old )
+        {
+            wxSizer* const sizer = m_panel->GetSizer();
+            sizer->Replace(old, m_listCtrl);
+
+            delete old;
+
+            sizer->Layout();
+        }
 
         switch ( flags & wxLC_MASK_TYPE )
         {
@@ -492,8 +493,6 @@ void MyFrame::RecreateList(long flags, bool withText)
         if ( mb )
             m_listCtrl->EnableBellOnNoMatch(mb->IsChecked(LIST_TOGGLE_BELL));
     }
-
-    DoSize();
 
     GetMenuBar()->Check(LIST_ROW_LINES, false);
 
@@ -845,22 +844,22 @@ void MyFrame::OnUpdateToggleMultiSel(wxUpdateUIEvent& event)
      event.Check(!m_listCtrl->HasFlag(wxLC_SINGLE_SEL));
 }
 
-void MyFrame::OnToggleCheckboxes(wxCommandEvent& WXUNUSED(event))
+void MyFrame::OnToggleCheckBoxes(wxCommandEvent& WXUNUSED(event))
 {
-    if ( !m_listCtrl->EnableCheckboxes(!m_listCtrl->HasCheckboxes()) )
+    if ( !m_listCtrl->EnableCheckBoxes(!m_listCtrl->HasCheckBoxes()) )
     {
         wxLogMessage("Failed to toggle checkboxes (not supported?)");
     }
     else
     {
         wxLogMessage("Checkboxes are now %s",
-                     m_listCtrl->HasCheckboxes() ? "enabled" : "disabled");
+                     m_listCtrl->HasCheckBoxes() ? "enabled" : "disabled");
     }
 }
 
-void MyFrame::OnUpdateToggleCheckboxes(wxUpdateUIEvent& event)
+void MyFrame::OnUpdateToggleCheckBoxes(wxUpdateUIEvent& event)
 {
-    bool cbEnabled = m_listCtrl->HasCheckboxes();
+    bool cbEnabled = m_listCtrl->HasCheckBoxes();
     event.Check(cbEnabled);
     GetMenuBar()->Enable(LIST_TOGGLE_CHECKBOX, cbEnabled);
     GetMenuBar()->Enable(LIST_GET_CHECKBOX, cbEnabled);
@@ -894,6 +893,20 @@ void MyFrame::OnSetRowLines(wxCommandEvent& event)
     m_listCtrl->Refresh();
 }
 
+void MyFrame::OnCustomHeaderAttr(wxCommandEvent& event)
+{
+    wxItemAttr attr;
+    if ( event.IsChecked() )
+    {
+        attr.SetTextColour(*wxBLUE);
+        attr.SetFont(wxFontInfo(24).Italic());
+    }
+    //else: leave it as default to disable custom header attributes
+
+    if ( !m_listCtrl->SetHeaderAttr(attr) )
+        wxLogMessage("Sorry, header attributes not supported on this platform");
+}
+
 void MyFrame::OnAdd(wxCommandEvent& WXUNUSED(event))
 {
     m_listCtrl->InsertItem(m_listCtrl->GetItemCount(), wxT("Appended item"));
@@ -924,7 +937,7 @@ void MyFrame::OnEdit(wxCommandEvent& WXUNUSED(event))
     }
 }
 
-void MyFrame::OnToggleItemCheckbox(wxCommandEvent& WXUNUSED(event))
+void MyFrame::OnToggleItemCheckBox(wxCommandEvent& WXUNUSED(event))
 {
     long item = m_listCtrl->GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
     while (item != -1)
@@ -937,7 +950,7 @@ void MyFrame::OnToggleItemCheckbox(wxCommandEvent& WXUNUSED(event))
     }
 }
 
-void MyFrame::OnGetItemCheckbox(wxCommandEvent& WXUNUSED(event))
+void MyFrame::OnGetItemCheckBox(wxCommandEvent& WXUNUSED(event))
 {
     long item = m_listCtrl->GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
     while (item != -1)
@@ -1226,7 +1239,7 @@ void MyListCtrl::OnListKeyDown(wxListEvent& event)
 
                 GetItem(info);
 
-                wxListItemAttr *attr = info.GetAttributes();
+                wxItemAttr *attr = info.GetAttributes();
                 if ( !attr || !attr->HasTextColour() )
                 {
                     info.SetTextColour(*wxCYAN);
@@ -1339,8 +1352,9 @@ void MyListCtrl::OnListKeyDown(wxListEvent& event)
                 {
                     InsertItemInReportView(event.GetIndex());
                 }
+                break;
             }
-            //else: fall through
+            wxFALLTHROUGH;
 
         default:
             LogEvent(event, wxT("OnListKeyDown"));
@@ -1416,13 +1430,13 @@ int MyListCtrl::OnGetItemColumnImage(long item, long column) const
     return -1;
 }
 
-wxListItemAttr *MyListCtrl::OnGetItemAttr(long item) const
+wxItemAttr *MyListCtrl::OnGetItemAttr(long item) const
 {
     // test to check that RefreshItem() works correctly: when m_updated is
     // set to some item and it is refreshed, we highlight the item
     if ( item == m_updated )
     {
-        static wxListItemAttr s_attrHighlight(*wxRED, wxNullColour, wxNullFont);
+        static wxItemAttr s_attrHighlight(*wxRED, wxNullColour, wxNullFont);
         return &s_attrHighlight;
     }
 

@@ -13,6 +13,8 @@
 #include "wx/qt/private/converter.h"
 #include "wx/qt/private/winevent.h"
 
+#include <QtWidgets/QCheckBox>
+
 class wxQtCheckBox : public wxQtEventSignalHandler< QCheckBox, wxCheckBox >
 {
 public:
@@ -119,9 +121,12 @@ wxCheckBoxState wxCheckBox::DoGet3StateValue() const
     case Qt::PartiallyChecked:
         return wxCHK_UNDETERMINED;
     }
+
+    wxFAIL_MSG( "unknown QCheckBox state" );
+    return wxCHK_UNDETERMINED;
 }
 
-QCheckBox *wxCheckBox::GetHandle() const
+QWidget *wxCheckBox::GetHandle() const
 {
     return m_qtCheckBox;
 }

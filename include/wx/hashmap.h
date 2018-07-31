@@ -81,7 +81,7 @@ class WXDLLIMPEXP_BASE _wxHashTableBase2
 {
 public:
     typedef void (*NodeDtor)(_wxHashTable_NodeBase*);
-    typedef unsigned long (*BucketFromNode)(_wxHashTableBase2*,_wxHashTable_NodeBase*);
+    typedef size_t (*BucketFromNode)(_wxHashTableBase2*,_wxHashTable_NodeBase*);
     typedef _wxHashTable_NodeBase* (*ProcessNode)(_wxHashTable_NodeBase*);
 protected:
     static _wxHashTable_NodeBase* DummyProcessNode(_wxHashTable_NodeBase* node);
@@ -640,8 +640,8 @@ public: \
     typedef VALUE_T mapped_type; \
     _WX_DECLARE_PAIR( iterator, bool, Insert_Result, CLASSEXP ) \
  \
-    wxEXPLICIT CLASSNAME( size_type hint = 100, hasher hf = hasher(),        \
-                          key_equal eq = key_equal() )                       \
+    explicit CLASSNAME( size_type hint = 100, hasher hf = hasher(),          \
+                        key_equal eq = key_equal() )                         \
         : CLASSNAME##_wxImplementation_HashTable( hint, hf, eq,              \
                                    CLASSNAME##_wxImplementation_KeyEx() ) {} \
  \

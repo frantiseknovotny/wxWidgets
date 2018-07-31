@@ -37,17 +37,17 @@ class ComboBoxTestCase : public TextEntryTestCase, public ItemContainerTestCase,
 public:
     ComboBoxTestCase() { }
 
-    virtual void setUp();
-    virtual void tearDown();
+    virtual void setUp() wxOVERRIDE;
+    virtual void tearDown() wxOVERRIDE;
 
 private:
-    virtual wxTextEntry *GetTestEntry() const { return m_combo; }
-    virtual wxWindow *GetTestWindow() const { return m_combo; }
+    virtual wxTextEntry *GetTestEntry() const wxOVERRIDE { return m_combo; }
+    virtual wxWindow *GetTestWindow() const wxOVERRIDE { return m_combo; }
 
-    virtual wxItemContainer *GetContainer() const { return m_combo; }
-    virtual wxWindow *GetContainerWindow() const { return m_combo; }
+    virtual wxItemContainer *GetContainer() const wxOVERRIDE { return m_combo; }
+    virtual wxWindow *GetContainerWindow() const wxOVERRIDE { return m_combo; }
 
-    virtual void CheckStringSelection(const char * WXUNUSED(sel))
+    virtual void CheckStringSelection(const char * WXUNUSED(sel)) wxOVERRIDE
     {
         // do nothing here, as explained in TextEntryTestCase comment, our
         // GetStringSelection() is the wxChoice, not wxTextEntry, one and there
@@ -64,7 +64,7 @@ private:
 //  TODO on OS X only works interactively
 //   WXUISIM_TEST( Editable );
     CPPUNIT_TEST( Hint );
-    CPPUNIT_TEST( CopyPaste ); 
+    CPPUNIT_TEST( CopyPaste );
     CPPUNIT_TEST( UndoRedo );
 #else
         wxTEXT_ENTRY_TESTS();
@@ -145,10 +145,16 @@ void ComboBoxTestCase::PopDismiss()
     EventCounter close(m_combo, wxEVT_COMBOBOX_CLOSEUP);
 
     m_combo->Popup();
+    CPPUNIT_ASSERT_EQUAL(1, drop.GetCount());
+
     m_combo->Dismiss();
 
-    CPPUNIT_ASSERT_EQUAL(1, drop.GetCount());
+#if defined(__WXGTK__) && !defined(__WXGTK3__)
+    // Under wxGTK2, the event is sent only during idle time and not
+    // immediately, so we need this yield to get it.
+    wxYield();
     CPPUNIT_ASSERT_EQUAL(1, close.GetCount());
+#endif // wxGTK2
 #endif
 }
 

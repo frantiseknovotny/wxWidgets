@@ -23,14 +23,15 @@
 
 #include "wx/wfstream.h"
 #include "wx/gtk/private.h"
-
-#include <gtk/gtk.h>
+#include "wx/gtk/private/object.h"
 
 
 // ============================================================================
 // implementation
 // ============================================================================
 
+extern "C" {
+static
 void gdk_pixbuf_area_updated(GdkPixbufLoader *loader,
                              gint             WXUNUSED(x),
                              gint             WXUNUSED(y),
@@ -45,7 +46,7 @@ void gdk_pixbuf_area_updated(GdkPixbufLoader *loader,
         anim->SetPixbuf(gdk_pixbuf_loader_get_animation(loader));
     }
 }
-
+}
 
 //-----------------------------------------------------------------------------
 // wxAnimation
@@ -116,6 +117,8 @@ bool wxAnimation::Load(wxInputStream &stream, wxAnimationType type)
     else
         loader = gdk_pixbuf_loader_new();
 
+    wxGtkObject<GdkPixbufLoader> ensureUnrefLoader(loader);
+
     if (!loader ||
         error != NULL)  // even if the loader was allocated, an error could have happened
     {
@@ -156,6 +159,7 @@ bool wxAnimation::Load(wxInputStream &stream, wxAnimationType type)
     if (!data_written)
     {
         wxLogDebug("Could not read data from the stream...");
+        gdk_pixbuf_loader_close(loader, NULL);
         return false;
     }
 

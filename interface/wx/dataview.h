@@ -132,14 +132,51 @@ public:
         Called to inform the model that all data has been cleared.
         The control will reread the data from the model again.
     */
-    virtual bool Cleared();
+    bool Cleared();
 
     /**
-        The compare function to be used by control. The default compare function
-        sorts by container and other items separately and in ascending order.
-        Override this for a different sorting behaviour.
+        The compare function to be used by the control. The default compare
+        function sorts most data types implemented by wxVariant (i.e. bool,
+        int, long, double, string) as well as datetime and wxDataViewIconText.
+        Override this method to implement a different sorting behaviour or
+        override just DoCompareValues() to extend it to support other wxVariant
+        types.
 
-        @see HasDefaultCompare().
+        The function should return negative, null or positive for an ascending
+        comparison, depending on whether the first item is less than, equal to
+        or greater than the second one. The reverse is true for descending
+        comparisons. The items should be compared using the appropriate type
+        for the column passed.
+
+        @param item1
+            First item to compare.
+        @param item2
+            Second item to compare.
+        @param column
+            The column holding the items to be compared.
+        @param ascending
+            Indicates whether the sort is being performed in ascending or
+            descending order.
+        @return
+            For an ascending comparison: a negative value if the item1 is less
+            than (i.e. should appear above) item2, zero if the two items are
+            equal or a positive value if item1 is greater than (i.e. should
+            appear below) the second one. The reverse for a descending
+            comparison.
+        @note If there can be multiple rows with the same value, consider
+            differentiating them form each other by their IDs rather than
+            returning zero. This to prevent rows with the same value jumping
+            positions when items are added etc. For example:
+        @code
+            // Note that we need to distinguish between items with the same
+            // value.
+            wxUIntPtr id1 = wxPtrToUInt(item1.GetID()),
+                      id2 = wxPtrToUInt(item2.GetID());
+
+            return (ascending == (id1 > id2)) ? : 1 : -1;
+        @endcode
+
+        @see HasDefaultCompare(), DoCompareValues()
     */
     virtual int Compare(const wxDataViewItem& item1,
                         const wxDataViewItem& item2,
@@ -333,8 +370,7 @@ public:
         This will eventually emit a @c wxEVT_DATAVIEW_ITEM_VALUE_CHANGED
         event to the user.
     */
-    virtual bool ValueChanged(const wxDataViewItem& item,
-                              unsigned int col);
+    bool ValueChanged(const wxDataViewItem& item, unsigned int col);
 
     
     virtual bool IsListModel() const;
@@ -346,6 +382,32 @@ protected:
         Destructor. This should not be called directly. Use DecRef() instead.
     */
     virtual ~wxDataViewModel();
+
+    /**
+        Virtual method that can be overridden to define comparison for values
+        of non-standard types.
+
+        This function is called from the default Compare() implementation to
+        compare values of types it is not aware about (i.e. not any of the
+        standard ones). As Compare() itself, this method should return a
+        negative value if @a value1 is less than (i.e. should appear above) @a
+        value2 and a positive value if @a value2 is less than @a value1.
+
+        Unlike Compare(), if the values are equal, this method should just
+        return 0 to indicate it and let Compare() order them by their items
+        values. It also doesn't have to care about the sort order direction,
+        making it simpler to override than Compare() itself.
+
+        The default implementation just returns 0, so the derived class version
+        can simply forward to it if it doesn't know how to compare the given
+        values.
+
+        @see Compare()
+
+        @since 3.1.1
+    */
+    virtual int DoCompareValues(const wxVariant& value1,
+                                const wxVariant& value2) const;
 };
 
 
@@ -1299,7 +1361,7 @@ public:
        ensures that the item itself as well as all ancestor
        items have been read from the model by the control.
     */
-    virtual void ExpandAncestors( const wxDataViewItem & item );
+    void ExpandAncestors( const wxDataViewItem & item );
 
     /**
         Returns pointer to the column. @a pos refers to the position in the
@@ -1332,7 +1394,7 @@ public:
         style as in the case of single selection it returns the same thing as
         GetSelection().
 
-        Notice that under all platforms except Mac OS X the currently focused
+        Notice that under all platforms except OS X the currently focused
         item may be selected or not but under OS X the current item is always
         selected.
 
@@ -1363,11 +1425,8 @@ public:
     int GetIndent() const;
 
     /**
-        Returns item rectangle.
-
-        This method is currently not implemented at all in wxGTK and only
-        implemented for non-@NULL @a col argument in wxOSX. It is fully
-        implemented in the generic version of the control.
+        Returns item rectangle. Coordinates of the rectangle are specified in
+        wxDataViewCtrl client area coordinates.
 
         @param item
             A valid item.
@@ -1375,9 +1434,23 @@ public:
             If non-@NULL, the rectangle returned corresponds to the
             intersection of the item with the specified column. If @NULL, the
             rectangle spans all the columns.
+
+        @note This method is currently not implemented at all in wxGTK and only
+              implemented for non-@NULL @a col argument in wxOSX. It is fully
+              implemented in the generic version of the control.
     */
     virtual wxRect GetItemRect(const wxDataViewItem& item,
                                const wxDataViewColumn* col = NULL) const;
+
+    /**
+        Returns the window corresponding to the main area of the control.
+
+        This is the window that actually shows the control items and may be
+        different from wxDataViewCtrl window itself in some ports (currently
+        this is only the case for the generic implementation used by default
+        under MSW).
+     */
+    wxWindow* GetMainWindow();
 
     /**
         Returns pointer to the data model associated with the control (if any).
@@ -1453,7 +1526,9 @@ public:
     bool HasSelection() const;
 
     /**
-        Hittest.
+        Retrieves item and column at the given point.
+        The point coordinates are specified in wxDataViewCtrl client area
+        coordinates.
     */
     virtual void HitTest(const wxPoint& point, wxDataViewItem& item,
                          wxDataViewColumn*& col) const;
@@ -1492,6 +1567,21 @@ public:
     virtual void SelectAll();
 
     /**
+        Set custom colour for the alternate rows used with wxDV_ROW_LINES
+        style.
+
+        Note that calling this method has no effect if wxDV_ROW_LINES is off.
+
+        @param colour The colour to use for the alternate rows.
+        @return @true if customizing this colour is supported (currently only
+            in the generic version), @false if this method is not implemented
+            under this platform.
+
+        @since 3.1.1
+     */
+    bool SetAlternateRowColour(const wxColour& colour);
+
+    /**
         Set which column shall contain the tree-like expanders.
     */
     void SetExpanderColumn(wxDataViewColumn* col);
@@ -1514,6 +1604,25 @@ public:
         @since 2.9.2
      */
     void SetCurrentItem(const wxDataViewItem& item);
+
+    /**
+        Set custom colours and/or font to use for the header.
+
+        This method allows to customize the display of the control header (it
+        does nothing if @c wxDV_NO_HEADER style is used).
+
+        Currently it is only implemented in the generic version and just
+        returns @false without doing anything elsewhere.
+
+        @param attr The attribute defining the colour(s) and font to use. It
+            can be default, in which case the attributes are reset to their
+            default values.
+        @return @true if the attributes were updated, @false if the method is
+            not implemented or failed.
+
+        @since 3.1.1
+    */
+    bool SetHeaderAttr(const wxItemAttr& attr);
 
     /**
         Sets the indentation.
@@ -1542,8 +1651,8 @@ public:
         This function can only be used when all rows have the same height, i.e.
         when wxDV_VARIABLE_LINE_HEIGHT flag is not used.
 
-        Currently this is implemented in the generic and native GTK versions
-        only and nothing is done (and @false returned) when using OS X port.
+        Currently this is implemented in the generic and native GTK and OS X
+        (since 3.1.1) versions.
 
         Also notice that this method can only be used to increase the row
         height compared with the default one (as determined by the return value
@@ -1565,6 +1674,28 @@ public:
         @since 3.1.0
     */
     virtual void ToggleSortByColumn(int column);
+
+    /**
+        Return the number of items that can fit vertically in the visible area of
+        the control.
+
+        Returns -1 if the number of items per page couldn't be determined. On
+        wxGTK this method can only determine the number of items per page if
+        there is at least one item in the control.
+
+        @since 3.1.1
+    */
+    int GetCountPerPage() const;
+
+    /**
+        Return the topmost visible item.
+
+        Returns an invalid item if there is no topmost visible item or if the method
+        is not implemented for the current platform.
+
+        @since 3.1.1
+    */
+    wxDataViewItem GetTopItem() const;
 };
 
 
@@ -1744,6 +1875,7 @@ enum wxDataViewCellRenderState
     There is a number of ready-to-use renderers provided:
     - wxDataViewTextRenderer,
     - wxDataViewIconTextRenderer,
+    - wxDataViewCheckIconTextRenderer,
     - wxDataViewToggleRenderer,
     - wxDataViewProgressRenderer,
     - wxDataViewBitmapRenderer,
@@ -1800,6 +1932,18 @@ public:
     void DisableEllipsize();
 
     /**
+        This method returns a string describing the content of the renderer
+        to the class implementing accessibility features in wxDataViewCtrl.
+
+        @note
+        The method is implemented if @c wxUSE_ACCESSIBILITY setup symbol is set
+        to 1.
+
+        @since 3.1.1
+    */
+    virtual wxString GetAccessibleDescription() const = 0;
+
+    /**
         Returns the alignment. See SetAlignment()
     */
     virtual int GetAlignment() const;
@@ -1839,7 +1983,7 @@ public:
 
     /**
         Sets the alignment of the renderer's content.
-        The default value of @c wxDVR_DEFAULT_ALIGMENT indicates that the content
+        The default value of @c wxDVR_DEFAULT_ALIGNMENT indicates that the content
         should have the same alignment as the column header.
 
         The method is not implemented under OS X and the renderer always aligns
@@ -1858,6 +2002,28 @@ public:
         The internal code will then render this cell with this data.
     */
     virtual bool SetValue(const wxVariant& value) = 0;
+
+    /**
+        Set the transformer object to be used to customize values before they
+        are rendered.
+
+        Can be used to change the value if it is shown on a highlighted row
+        (i.e. in selection) which typically has dark background. It is useful
+        in combination with wxDataViewTextRenderer with markup and can be used
+        e.g. to remove background color attributes inside selection, as a
+        lightweight alternative to implementing an entire
+        wxDataViewCustomRenderer specialization.
+
+        @a transformer can be @NULL to reset any transformer currently being
+        used.
+
+        Takes ownership of @a transformer.
+
+        @see wxDataViewValueAdjuster
+
+        @since 3.1.1
+    */
+    void SetValueAdjuster(wxDataViewValueAdjuster *transformer);
 
     /**
         Before data is committed to the data model, it is passed to this
@@ -1915,6 +2081,49 @@ public:
     wxDataViewTextRenderer(const wxString& varianttype = GetDefaultType(),
                            wxDataViewCellMode mode = wxDATAVIEW_CELL_INERT,
                            int align = wxDVR_DEFAULT_ALIGNMENT );
+
+    /**
+        Enable interpretation of markup in the item data.
+
+        If this method is called with @true argument, markup (@ref
+        wxControl::SetLabelMarkup()) in the data of the items in this column
+        will be interpreted, which can be used for a more fine-grained
+        appearance control than just setting an attribute, which affects all of
+        the item text.
+
+        For example, as shown in the @ref page_samples_dataview, after creating
+        a column using a markup-enabled renderer:
+        @code
+            wxDataViewTextRenderer* renderer = new wxDataViewTextRenderer();
+            renderer->EnableMarkup();
+            dataViewCtrl->AppendColumn(new wxDataViewColumn("title", renderer, 0));
+        @endcode
+
+        The overridden model wxDataViewModel::GetValue() method may return
+        values containing markup for this column:
+        @code
+        void MyModel::GetValue(wxVariant& variant,
+                               const wxDataViewItem& item,
+                               unsigned int col) const
+        {
+            if ( col == 0 && item == ... )
+            {
+                variant = "<span color=\"#87ceeb\">light</span> and "
+                          "<span color=\"#000080\">dark</span> blue";
+            }
+
+            ...
+        }
+        @endcode
+
+        @note Currently wxDataViewIconTextRenderer only provides EnableMarkup()
+            EnableMarkup() in wxGTK, but not under the other platforms, so you
+            should only use it for plain wxDataViewTextRenderer columns,
+            without icons, in portable code.
+
+        @since 3.1.1
+     */
+    void EnableMarkup(bool enable = true);
 };
 
 
@@ -1929,6 +2138,7 @@ public:
     wxDataViewIconText can be converted to and from a wxVariant using the left
     shift operator.
 
+    @see wxDataViewCheckIconTextRenderer
     @library{wxadv}
     @category{dvc}
 */
@@ -1950,6 +2160,58 @@ public:
                                int align = wxDVR_DEFAULT_ALIGNMENT );
 };
 
+
+/**
+    This renderer class shows a checkbox in addition to the icon and text shown
+    by the base class and also allows the user to toggle this checkbox.
+
+    By default this class doesn't allow the user to put the checkbox into the
+    third, i.e. indeterminate, state, even though it can display the state if
+    the program returns the corresponding value from the associated model. Call
+    Allow3rdStateForUser() explicitly if the user should be able to select the
+    3rd state interactively too.
+
+    This class is used internally by wxTreeListCtrl, and can be seen in action
+    in the corresponding sample.
+
+    @see wxDataViewIconTextRenderer, wxDataViewToggleRenderer
+    @library{wxadv}
+    @category{dvc}
+    @since 3.1.1
+ */
+class wxDataViewCheckIconTextRenderer : public wxDataViewRenderer
+{
+public:
+    static wxString GetDefaultType() { return wxS("wxDataViewCheckIconText"); }
+
+    /**
+        Create a new renderer.
+
+        By default the renderer is activatable, i.e. allows the user to toggle
+        the checkbox.
+     */
+    explicit wxDataViewCheckIconTextRenderer
+             (
+                  wxDataViewCellMode mode = wxDATAVIEW_CELL_ACTIVATABLE,
+                  int align = wxDVR_DEFAULT_ALIGNMENT
+             );
+
+    /**
+        Allow the user to interactively select the 3rd state for the items
+        rendered by this object.
+
+        As described in the class overview, this renderer can always display
+        the 3rd ("indeterminate") checkbox state if the model contains cells
+        with wxCHK_UNDETERMINED value, but it doesn't allow the user to set it
+        by default. Call this method to allow this to happen.
+
+        @param allow If @true, interactively clicking a checked cell switches
+            it to the indeterminate value and clicking it again unchecks it.
+            If @false, clicking a checked cell switches to the unchecked value,
+            skipping the indeterminate one.
+     */
+    void Allow3rdStateForUser(bool allow = true);
+};
 
 
 /**
@@ -2010,6 +2272,10 @@ public:
 
     This class is used by wxDataViewCtrl to render toggle controls.
 
+    Note that "toggles" can be represented either by check boxes (default) or
+    radio buttons.
+
+    @see wxDataViewCheckIconTextRenderer
     @library{wxadv}
     @category{dvc}
 */
@@ -2029,6 +2295,24 @@ public:
     wxDataViewToggleRenderer(const wxString& varianttype = GetDefaultType(),
                              wxDataViewCellMode mode = wxDATAVIEW_CELL_INERT,
                              int align = wxDVR_DEFAULT_ALIGNMENT);
+
+    /**
+        Switch to using radiobutton-like appearance instead of the default
+        checkbox-like one.
+
+        By default, this renderer uses checkboxes to represent the boolean
+        values, but using this method its appearance can be changed to use
+        radio buttons instead.
+
+        Notice that only the appearance is changed, the cells don't really
+        start behaving as radio buttons after a call to ShowAsRadio(), i.e. the
+        application code also needs to react to selecting one of the cells
+        shown by this renderer and clearing all the other ones in the same row
+        or column to actually implement radio button-like behaviour.
+
+        @since 3.1.2
+     */
+    void ShowAsRadio();
 };
 
 
@@ -2131,6 +2415,9 @@ public:
     wxDataViewCustomRenderer::HasEditorCtrl, wxDataViewCustomRenderer::CreateEditorCtrl
     and wxDataViewCustomRenderer::GetValueFromEditorCtrl.
 
+    If @c wxUSE_ACCESSIBILITY setup symbol is set to 1, you might need to override also
+    wxDataViewRenderer::GetAccessibleDescription.
+
     Note that a special event handler will be pushed onto that editor control
     which handles @e \<ENTER\> and focus out events in order to end the editing.
 
@@ -2187,6 +2474,10 @@ public:
             If the activation was triggered by mouse click, contains the
             corresponding event. Is @NULL otherwise (for keyboard activation).
             Mouse coordinates are adjusted to be relative to the cell.
+
+        @note Currently support for this method is not implemented in the
+            native macOS version of the control, i.e. it will be never called
+            there.
 
         @since 2.9.3
 
@@ -2304,8 +2595,7 @@ public:
                           const wxDataViewItem & item,
                           unsigned int col);
 
-
-    /**
+/**
         Override this to render the cell.
         Before this is called, wxDataViewRenderer::SetValue was called
         so that this instance knows what to render.
@@ -2691,17 +2981,29 @@ public:
     //@{
 
     /**
-        Appends an item (=row) to the control and store.
+        Appends an item (i.e.\ a row) to the control.
+
+        Note that the size of @a values vector must be exactly equal to the
+        number of columns in the control and that columns must not be modified
+        after adding any items to the control (or, conversely, items must not
+        be added before the columns are set up).
     */
     void AppendItem( const wxVector<wxVariant> &values, wxUIntPtr data = NULL );
 
     /**
-        Prepends an item (=row) to the control and store.
+        Prepends an item (i.e.\ a row) to the control.
+
+        See remarks for AppendItem() for preconditions of this method.
     */
     void PrependItem( const wxVector<wxVariant> &values, wxUIntPtr data = NULL );
 
     /**
-        Inserts an item (=row) to the control and store.
+        Inserts an item (i.e.\ a row) to the control.
+
+        See remarks for AppendItem() for preconditions of this method.
+
+        Additionally, @a row must be less than or equal to the current number
+        of items in the control (see GetItemCount()).
     */
     void InsertItem( unsigned int row, const wxVector<wxVariant> &values, wxUIntPtr data = NULL );
 
@@ -3161,6 +3463,13 @@ public:
     without having to derive any class from it, but it is mostly used from within
     wxDataViewTreeCtrl.
 
+    Notice that by default this class sorts all items with children before the
+    leaf items. If this behaviour is inappropriate, you need to derive a custom
+    class from this one and override either its HasDefaultCompare() method to
+    return false, which would result in items being sorted just in the order in
+    which they were added, or its Compare() function to compare the items using
+    some other criterion, e.g. alphabetically.
+
     @library{wxadv}
     @category{dvc}
 */
@@ -3372,8 +3681,8 @@ public:
            Process a @c wxEVT_DATAVIEW_COLUMN_SORTED event.
     @event{EVT_DATAVIEW_COLUMN_REORDERED(id, func)}
            Process a @c wxEVT_DATAVIEW_COLUMN_REORDERED event.
-           Currently this even is only generated when using the native OS X
-           version.
+           Currently this event is not generated when using the native GTK+
+           version of the control.
     @event{EVT_DATAVIEW_ITEM_BEGIN_DRAG(id, func)}
            Process a @c wxEVT_DATAVIEW_ITEM_BEGIN_DRAG event.
     @event{EVT_DATAVIEW_ITEM_DROP_POSSIBLE(id, func)}
@@ -3391,14 +3700,38 @@ class wxDataViewEvent : public wxNotifyEvent
 {
 public:
     /**
-        Constructor. Typically used by wxWidgets internals only.
+       Default ctor, normally shouldn't be used and mostly exists only for
+       backwards compatibility.
     */
-    wxDataViewEvent(wxEventType commandType = wxEVT_NULL,
-                    int winid = 0);
+    wxDataViewEvent();
 
+    /**
+       Constructor for the events affecting columns (and possibly also items).
+    */
+    wxDataViewEvent(wxEventType evtType,
+                    wxDataViewCtrl* dvc,
+                    wxDataViewColumn* column,
+                    const wxDataViewItem& item = wxDataViewItem());
+
+    /**
+       Constructor for the events affecting only the items.
+    */
+    wxDataViewEvent(wxEventType evtType,
+                    wxDataViewCtrl* dvc,
+                    const wxDataViewItem& item);
+
+    /**
+       Copy constructor.
+    */
+    wxDataViewEvent(const wxDataViewEvent& event);
+
+    
     /**
         Returns the position of the column in the control or -1
         if no column field was set by the event emitter.
+
+        For wxEVT_DATAVIEW_COLUMN_REORDERED, this is the new position of the
+        column.
     */
     int GetColumn() const;
 
@@ -3529,7 +3862,6 @@ public:
     int GetCacheTo() const;
 
 
-
     /**
         Returns the item affected by the event.
 
@@ -3538,8 +3870,8 @@ public:
         indicating that the drop is about to happen outside of the item area.
      */
     wxDataViewItem GetItem() const;
+
     void SetItem( const wxDataViewItem &item );
-    void SetEditCanceled(bool editCancelled);
     void SetPosition( int x, int y );
     void SetCache(int from, int to);
     wxDataObject *GetDataObject() const;
@@ -3548,6 +3880,68 @@ public:
     void SetDataBuffer( void* buf );
     int GetDragFlags() const;
     void SetDropEffect( wxDragResult effect );
-
 };
 
+
+/**
+    @class wxDataViewValueAdjuster
+
+    This class can be used with wxDataViewRenderer::SetValueAdjuster() to
+    customize rendering of model values with standard renderers.
+
+    Can be used to change the value if it is shown on a highlighted row (i.e.
+    in selection) which typically has dark background. It is useful in
+    combination with wxDataViewTextRenderer with markup and can be used e.g. to
+    remove background color attributes inside selection, as a lightweight
+    alternative to implementing an entire wxDataViewCustomRenderer
+    specialization.
+
+    @code
+    // Markup renderer that removes bgcolor attributes when in selection
+    class DataViewMarkupRenderer : public wxDataViewTextRenderer
+    {
+    public:
+        DataViewMarkupRenderer()
+        {
+            EnableMarkup();
+            SetValueAdjuster(new Adjuster());
+        }
+
+    private:
+        class Adjuster : public wxDataViewValueAdjuster
+        {
+        public:
+            wxVariant MakeHighlighted(const wxVariant& value) const override
+            {
+                wxString s = value.GetString();
+                size_t pos = s.find(" bgcolor=\"");
+                if (pos != wxString::npos)
+                {
+                    size_t pos2 = s.find('"', pos + 10);
+                    s.erase(pos, pos2 - pos + 1);
+                    return s;
+                }
+                return value;
+            }
+        };
+    };
+    @endcode
+
+    @since 3.1.1
+
+    @library{wxadv}
+    @category{dvc}
+*/
+class wxDataViewValueAdjuster
+{
+public:
+    /**
+        Change value for rendering when highlighted.
+
+        Override to customize the value when it is shown in a highlighted
+        (selected) row, typically on a dark background.
+
+        Default implementation returns @a value unmodified.
+    */
+    virtual wxVariant MakeHighlighted(const wxVariant& value) const;
+};

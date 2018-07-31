@@ -16,25 +16,34 @@
 #ifndef WX_PRECOMP
     #include "wx/intl.h"
     #include "wx/app.h"
+    #include "wx/datetime.h"
 #endif
 
 #include "wx/apptrait.h"
 
 #include "wx/osx/private.h"
 
+#if (defined(__WXOSX_COCOA__) && MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_X_VERSION_10_10) \
+    || (defined(__WXOSX_IPHONE__) && defined(__IPHONE_8_0))
+    #define wxHAS_NSPROCESSINFO 1
+#endif
+
 // our OS version is the same in non GUI and GUI cases
-wxOperatingSystemId wxGetOsVersion(int *majorVsn, int *minorVsn)
+wxOperatingSystemId wxGetOsVersion(int *verMaj, int *verMin, int *verMicro)
 {
-#if MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_X_VERSION_10_10
+#ifdef wxHAS_NSPROCESSINFO
     if ([NSProcessInfo instancesRespondToSelector:@selector(operatingSystemVersion)])
     {
         NSOperatingSystemVersion osVer = [NSProcessInfo processInfo].operatingSystemVersion;
 
-        if ( majorVsn != NULL )
-            *majorVsn = osVer.majorVersion;
+        if ( verMaj != NULL )
+            *verMaj = osVer.majorVersion;
 
-        if ( minorVsn != NULL )
-            *minorVsn = osVer.minorVersion;
+        if ( verMin != NULL )
+            *verMin = osVer.minorVersion;
+
+        if ( verMicro != NULL )
+            *verMicro = osVer.patchVersion;
     }
     else
 #endif
@@ -42,40 +51,52 @@ wxOperatingSystemId wxGetOsVersion(int *majorVsn, int *minorVsn)
         // On OS X versions prior to 10.10 NSProcessInfo does not provide the OS version
         // Deprecated Gestalt calls are required instead
 wxGCC_WARNING_SUPPRESS(deprecated-declarations)
-        SInt32 maj, min;
+        SInt32 maj, min, micro;
+#ifdef __WXOSX_IPHONE__
+        maj = 7;
+        min = 0;
+        micro = 0;
+#else
         Gestalt(gestaltSystemVersionMajor, &maj);
         Gestalt(gestaltSystemVersionMinor, &min);
+        Gestalt(gestaltSystemVersionBugFix, &micro);
+#endif
 wxGCC_WARNING_RESTORE()
 
-        if ( majorVsn != NULL )
-            *majorVsn = maj;
+        if ( verMaj != NULL )
+            *verMaj = maj;
 
-        if ( minorVsn != NULL )
-            *minorVsn = min;
+        if ( verMin != NULL )
+            *verMin = min;
+
+        if ( verMicro != NULL )
+            *verMicro = micro;
     }
 
     return wxOS_MAC_OSX_DARWIN;
 }
 
-bool wxCheckOsVersion(int majorVsn, int minorVsn)
+bool wxCheckOsVersion(int majorVsn, int minorVsn, int microVsn)
 {
-#if MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_X_VERSION_10_10
+#ifdef wxHAS_NSPROCESSINFO
     if ([NSProcessInfo instancesRespondToSelector:@selector(isOperatingSystemAtLeastVersion:)])
     {
         NSOperatingSystemVersion osVer;
         osVer.majorVersion = majorVsn;
         osVer.minorVersion = minorVsn;
-        osVer.patchVersion = 0;
+        osVer.patchVersion = microVsn;
 
         return [[NSProcessInfo processInfo] isOperatingSystemAtLeastVersion:osVer] != NO;
     }
     else
 #endif
     {
-        int majorCur, minorCur;
-        wxGetOsVersion(&majorCur, &minorCur);
+        int majorCur, minorCur, microCur;
+        wxGetOsVersion(&majorCur, &minorCur, &microCur);
 
-        return majorCur > majorVsn || (majorCur == majorVsn && minorCur >= minorVsn);
+        return majorCur > majorVsn
+            || (majorCur == majorVsn && minorCur >= minorVsn)
+            || (majorCur == majorVsn && minorCur == minorVsn && microCur >= microVsn);
     }
 }
 
@@ -85,10 +106,12 @@ wxString wxGetOsDescription()
     int majorVer, minorVer;
     wxGetOsVersion(&majorVer, &minorVer);
 
+#ifndef __WXOSX_IPHONE__
     // Notice that neither the OS name itself nor the code names seem to be
     // ever translated, OS X itself uses the English words even for the
     // languages not using Roman alphabet.
-    wxString osBrand = "OS X";
+    // Starting with 10.12 the macOS branding is used
+    wxString osBrand = wxCheckOsVersion(10, 12) ? "macOS" : "OS X";
     wxString osName;
     if (majorVer == 10)
     {
@@ -111,8 +134,21 @@ wxString wxGetOsDescription()
             case 11:
                 osName = "El Capitan";
                 break;
+            case 12:
+                osName = "Sierra";
+                break;
+            case 13:
+                osName = "High Sierra";
+                break;
+            case 14:
+                osName = "Mojave";
+                break;
         };
     }
+#else
+    wxString osBrand = "iOS";
+    wxString osName;
+#endif
 
     wxString osDesc = osBrand;
     if (!osName.empty())
@@ -125,3 +161,16 @@ wxString wxGetOsDescription()
     return osDesc;
 }
 
+/* static */
+#if wxUSE_DATETIME
+bool wxDateTime::GetFirstWeekDay(wxDateTime::WeekDay *firstDay)
+{
+    wxCHECK_MSG( firstDay, false, wxS("output parameter must be non-null") );
+
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    [calendar setLocale:[NSLocale autoupdatingCurrentLocale]];
+
+    *firstDay = wxDateTime::WeekDay(([calendar firstWeekday] - 1) % 7);
+    return true;
+}
+#endif // wxUSE_DATETIME

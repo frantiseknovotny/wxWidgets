@@ -139,8 +139,10 @@ void VarArgTestCase::CharPrintf()
     #ifdef _MSC_VER
         #pragma warning(default:4309)
     #endif
+    #ifndef __CHAR_UNSIGNED__
     s.Printf("value is %i (int)", c);
     CPPUNIT_ASSERT_EQUAL( wxString("value is -16 (int)"), s );
+    #endif
 
     unsigned char u = 240;
     s.Printf("value is %i (int)", u);
@@ -204,12 +206,12 @@ void VarArgTestCase::Sscanf()
 
     wxSscanf(input, "%d %s", &i, &str);
     CPPUNIT_ASSERT( i == 42 );
-    CPPUNIT_ASSERT( wxStrcmp(str, "test") == 0 );
+    CPPUNIT_ASSERT( wxString(str) == "test" );
 
     i = 0;
     wxSscanf(input, L"%d %s", &i, &wstr);
     CPPUNIT_ASSERT( i == 42 );
-    CPPUNIT_ASSERT( wxStrcmp(wstr, "test") == 0 );
+    CPPUNIT_ASSERT( wxString(wstr) == "test" );
 }
 
 void VarArgTestCase::RepeatedPrintf()

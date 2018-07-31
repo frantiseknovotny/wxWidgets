@@ -52,10 +52,6 @@ public:
         Call this function to enable auto-completion of the text typed in a
         single-line text control using the given @a choices.
 
-        Notice that currently this function is only implemented in wxGTK2,
-        wxMSW and wxOSX/Cocoa (for wxTextCtrl only, but not for wxComboBox)
-        ports and does nothing under the other platforms.
-
         @since 2.9.0
 
         @return
@@ -81,9 +77,6 @@ public:
 
         Notice that you need to include @c wx/textcompleter.h in order to
         define your class inheriting from wxTextCompleter.
-
-        Currently this method is only implemented in wxMSW and wxOSX/Cocoa (for
-        wxTextCtrl only, but not for wxComboBox).
 
         @since 2.9.2
 
@@ -483,6 +476,9 @@ public:
             hints and the text control is empty. If you bind to the control's
             focus and wxEVT_TEXT events, you must call wxEvent::Skip() on them
             so that the generic implementation works correctly.
+
+            Another limitation is that hints are ignored for the controls with
+            @c wxTE_PASSWORD style.
 
         @remarks Hints can be used for single line text controls under all
             platforms, but only MSW and GTK+ 2 support them for multi-line text

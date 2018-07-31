@@ -76,6 +76,14 @@ in wxAnimation.
 
 @sampledir{animate}
 
+@section page_samples_archive Archive Sample
+
+This sample shows how you can use wxArchiveClassFactory, wxArchiveOutputStream
+and wxArchiveInputStream. This shows how to process ZIP and TAR archives using
+wxZipOutputStream and wxTarOutputStream
+
+@sampledir{archive}
+
 @section page_samples_artprov Art Provider Sample
 
 This sample shows how you can customize the look of standard
@@ -169,7 +177,7 @@ This sample shows how to use the common dialogs available from wxWidgets. These
 dialogs are described in detail in the @ref overview_cmndlg.
 
 In addition to the dialogs accessible from the sample menus, you can also run
-it with a <code>--progress=style</code> command line option to show a
+it with a <code>\--progress=style</code> command line option to show a
 wxProgressDialog with the given style (try 0 for the default style) on program
 startup, before the main window is shown.
 
@@ -266,7 +274,7 @@ wxDataObject to achieve this.
 
 This sample demonstrates various features of the wxWidgets events. It
 shows how to dynamic events and connecting/disconnecting the event handlers
-during run time by using wxEvtHandler::Connect() and wxEvtHandler::Disconnect(),
+during run time by using wxEvtHandler::Bind() and wxEvtHandler::Unbind(),
 and also how to use wxWindow::PushEventHandler() and wxWindow::PopEventHandler().
 
 @sampledir{event}
@@ -553,6 +561,8 @@ commands through the menu.
     Arrow keys rotate the cube. Space bar toggles spinning.
 @li @b isosurf Draws a surface by reading coordinates from a DAT file.
 @li @b penguin Draws a rotatable penguin by reading data from a DXF file.
+@li @b pyramid Draws a rotatable tetrahedron and some strings.
+    It uses OpenGL 3.2 Core Profile context.
 
 @sampledir{opengl}
 
@@ -648,6 +658,20 @@ prevent unnecessary drawing in the window and thus reducing or removing flicker
 on screen.
 
 @sampledir{scroll}
+
+@section page_samples_secretstore Secret Store Sample
+
+@sampleabout{wxSecretStore}
+
+This console-mode sample shows the use of wxSecretStore class for remembering
+the user-entered passwords. It should be run from the command line with the
+first argument of @c save, @c load or @c delete, followed by the "service" and
+"user" arguments as used by wxSecretStore methods. After storing some password,
+you can check that it can be retrieved later and also that it can be seen in
+the OS-provided password manager (e.g. credential manager under MSW or keychain
+utility under OS X).
+
+@sampledir{secretstore}
 
 @section page_samples_shaped Shaped Window Sample
 

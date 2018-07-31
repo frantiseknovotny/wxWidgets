@@ -191,13 +191,7 @@ static wxStrCacheStatsDumper s_showCacheStats;
 wxSTD ostream& operator<<(wxSTD ostream& os, const wxCStrData& str)
 {
 #if wxUSE_UNICODE && !wxUSE_UNICODE_UTF8
-    const wxScopedCharBuffer buf(str.AsCharBuf());
-    if ( !buf )
-        os.clear(wxSTD ios_base::failbit);
-    else
-        os << buf.data();
-
-    return os;
+    return os << wxConvWhateverWorks.cWX2MB(str);
 #else
     return os << str.AsInternal();
 #endif
@@ -1166,10 +1160,10 @@ int wxString::CmpNoCase(const wxString& s) const
 
 wxString wxString::FromAscii(const char *ascii, size_t len)
 {
-    if (!ascii || len == 0)
-       return wxEmptyString;
-
     wxString res;
+
+    if (!ascii || len == 0)
+       return res;
 
     {
         wxStringInternalBuffer buf(res, len);

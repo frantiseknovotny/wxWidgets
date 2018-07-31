@@ -127,6 +127,11 @@ private:
     wxDECLARE_EVENT_TABLE();
 };
 
+// Avoid gcc warning about some of the functions defined by the expansion of
+// the event table macros being unused: they are indeed unused, but we still
+// want to have them to check that they compile.
+wxGCC_WARNING_SUPPRESS(unused-function)
+
 wxBEGIN_EVENT_TABLE(MyClassWithEventTable, wxEvtHandler)
     EVT_IDLE(MyClassWithEventTable::OnIdle)
 
@@ -137,6 +142,8 @@ wxBEGIN_EVENT_TABLE(MyClassWithEventTable, wxEvtHandler)
     //EVT_MYEVENT(MyClassWithEventTable::OnIdle)
     //EVT_IDLE(MyClassWithEventTable::OnAnotherEvent)
 wxEND_EVENT_TABLE()
+
+wxGCC_WARNING_RESTORE(unused-function)
 
 } // anonymous namespace
 
@@ -509,3 +516,21 @@ void EvtHandlerTestCase::UnbindFromHandler()
 
     handler.ProcessEvent(e);
 }
+
+// This is a compilation-time-only test: just check that a class inheriting
+// from wxEvtHandler non-publicly can use Bind() with its method, this used to
+// result in compilation errors.
+// Note that this test will work only on C++11 compilers, so we test this only
+// for such compilers.
+#if __cplusplus >= 201103
+class HandlerNonPublic : protected wxEvtHandler
+{
+public:
+    HandlerNonPublic()
+    {
+        Bind(wxEVT_IDLE, &HandlerNonPublic::OnIdle, this);
+    }
+
+    void OnIdle(wxIdleEvent&) { }
+};
+#endif // C++11
