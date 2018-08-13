@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup Label="UserMacros">
     <wxVersionString>312</wxVersionString>
@@ -7,7 +7,7 @@
     <wxCompilerPrefix>vc</wxCompilerPrefix>
     <wxCfg>
     </wxCfg>
-    <wxVendor>custom</wxVendor>
+    <wxVendor>gepro</wxVendor>
   </PropertyGroup>
   <PropertyGroup Label="UserMacros" Condition="'$(Platform)'=='Win32'">
     <wxArchSuffix>
@@ -64,7 +64,7 @@
   <PropertyGroup Label="UserMacros">
     <wxIncSubDir>$(wxToolkitPrefix)$(wxSuffix)</wxIncSubDir>
     <wxToolkitDllNamePrefix>wx$(wxToolkitPrefix)$(wxVersionString)$(wxSuffix)_</wxToolkitDllNamePrefix>
-    <wxToolkitDllNameSuffix>_$(wxCompilerPrefix)$(wxArchSuffix)_$(wxVendor)</wxToolkitDllNameSuffix>
+    <wxToolkitDllNameSuffix>_$(wxVendor)</wxToolkitDllNameSuffix>
     <wxToolkitLibNamePrefix>wx$(wxToolkitPrefix)$(wxShortVersionString)$(wxSuffix)_</wxToolkitLibNamePrefix>
     <wxBaseDllNamePrefix>wxbase$(wxVersionString)$(wxSuffix)</wxBaseDllNamePrefix>
     <wxBaseLibNamePrefix>wxbase$(wxShortVersionString)$(wxSuffix)</wxBaseLibNamePrefix>
