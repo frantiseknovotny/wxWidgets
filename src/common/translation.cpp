@@ -1690,6 +1690,57 @@ const wxString *wxTranslations::GetTranslatedString(const wxString& origString,
     return trans;
 }
 
+// <ADDGEPRO>
+// get the translation of given string in current locale
+const wxString& wxTranslations::GetString(const wxString& origString,
+                                    const wxArrayString& domains,bool& translated) const
+{
+    return GetString(origString, origString, size_t(-1), domains,translated);
+}
+const wxString& wxTranslations::GetString(const wxString& origString,
+                                    const wxString& origString2,
+                                    size_t n,
+                                    const wxArrayString& domains,bool& translated) const
+{
+    translated=false;
+    if ( origString.empty() )
+        return GetUntranslatedString(origString);
+
+    const wxString *trans = NULL;
+    wxMsgCatalog *pMsgCat;
+
+    unsigned cnt=domains.GetCount();
+    for(unsigned i=0;i<cnt;i++)
+    {
+        pMsgCat = FindCatalog(domains[i]);
+
+        // does the catalog exist?
+        if ( pMsgCat != NULL )
+        {
+            trans = pMsgCat->GetString(origString, n);
+            if(trans) break;
+        }
+
+    }
+    if ( trans == NULL )
+    {
+        wxString domains_list=wxJoin(domains,',');
+        wxLogTrace(TRACE_I18N,
+                wxS("string \"%s\"[%ld] not found in %slocale '%s'."),
+                origString, (long)n,
+                wxString::Format(wxS("domain '%s' "), domains_list).c_str(),
+                "");
+
+        if (n == size_t(-1))
+            return GetUntranslatedString(origString);
+        else
+            return GetUntranslatedString(n == 1 ? origString : origString2);
+    } else translated=true;
+
+    return *trans;
+}
+// </ADDGEPRO>
+
 wxString wxTranslations::GetHeaderValue(const wxString& header,
                                         const wxString& domain) const
 {

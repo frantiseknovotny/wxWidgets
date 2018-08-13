@@ -318,6 +318,20 @@ public:
     {
         return wxGetTranslation(origString, origString2, n, domain);
     }
+    // GEPRO begin
+    virtual const wxString& GetString(const wxString& origString,
+                                    const wxArrayString& domains,
+                                    bool& translated) const {
+        return m_translations.GetString(origString, domains, translated);
+    }
+    virtual const wxString& GetString(const wxString& origString,
+                                    const wxString& origString2,
+                                    size_t n,
+                                    const wxArrayString& domains,
+                                    bool& translated) const {
+            return m_translations.GetString(origString, origString2, n, domains,translated);
+    }
+    // GEPRO end
 
     // Returns the current short name for the locale
     const wxString& GetName() const { return m_strShort; }

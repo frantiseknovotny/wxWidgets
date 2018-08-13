@@ -172,6 +172,16 @@ public:
 
     wxString GetHeaderValue(const wxString& header,
                             const wxString& domain = wxEmptyString) const;
+    // GEPRO begin                        
+    const wxString& GetString(const wxString& origString,
+                                    const wxArrayString& domains,
+                                    bool& translated) const;
+    const wxString& GetString(const wxString& origString,
+                                    const wxString& origString2,
+                                    size_t n,
+                                    const wxArrayString& domains,
+                                    bool& translated) const;
+    // GEPRO end
 
     // this is hack to work around a problem with wxGetTranslation() which
     // returns const wxString& and not wxString, so when it returns untranslated
